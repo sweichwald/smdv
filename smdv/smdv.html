@@ -192,6 +192,10 @@
 
 
 
+  <script src="https://cdn.jsdelivr.net/npm/morphdom@2.6.0/dist/morphdom.min.js"></script>
+
+
+
   <!-- viz.js -->
   <script src="https://github.com/mdaines/viz.js/releases/download/v2.1.2/viz.js"></script>
   <script src="https://github.com/mdaines/viz.js/releases/download/v2.1.2/full.render.js"></script>
@@ -302,11 +306,26 @@ var updateNavbar = function () {
 
 // body
 var updateBody = function () {
+    container = document.getElementById("content");
     if (message.fileOpen) {
-        document.getElementById("content").innerHTML = message.fileBody;
+        newcontent = message.fileBody;
     } else {
-        document.getElementById("content").innerHTML = message.cwdBody;
+        newcontent = message.cwdBody;
     }
+//     container.innerHTML = newcontent;
+    morphdom(
+        container,
+        '<div class="markdown-body" id="content">'.concat(newcontent, '</div>'),
+        {
+            onBeforeElUpdated: function(fromEl, toEl) {
+                // spec - https://dom.spec.whatwg.org/#concept-node-equals
+                if (fromEl.isEqualNode(toEl)) {
+                    return false
+                }
+                return true
+            }
+        }
+    );
     updateViz();
 }
 
