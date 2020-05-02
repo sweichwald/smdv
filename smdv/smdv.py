@@ -690,33 +690,37 @@ def md2body(content: str = "") -> str:
         stdout=subprocess.PIPE,
         input=content.encode()).stdout)
     blocks = jsonout['blocks']
-    html = ""
+
+    htmlblocks = []
+
     markertag = '<a name=\\"#marker\\" id=\\"marker\\"></a>'
     marker = '<a name="#marker" id="marker"></a>'
     for b in blocks:
         jsonout['blocks'] = [b]
         jsontext = json.dumps(jsonout)
-        html += "\n"
+        html = "\n"
         if jsontext.find(markertag) >= 0:
             html += marker + '\n'
             jsontext = jsontext.replace(markertag, '')
         html += "\n" + json2html(jsontext)
 
-    urls = (re.findall('src="(.*?)"', html)
-            + re.findall("src='(.*?)'", html)
-            + re.findall('href="(.*?)"', html)
-            + re.findall("href='(.*?)'", html))
+        urls = (re.findall('src="(.*?)"', html)
+                + re.findall("src='(.*?)'", html)
+                + re.findall('href="(.*?)"', html)
+                + re.findall("href='(.*?)'", html))
 
-    for url in urls:
-        if not (
-                url.startswith("/")
-                or url.startswith("http://")
-                or url.startswith("https://")
-                or url.startswith("#")):
-            html = html.replace(
-                url, f"http://{ARGS.host}:{ARGS.port}/@static{cwd}{url}")
+        for url in urls:
+            if not (
+                    url.startswith("/")
+                    or url.startswith("http://")
+                    or url.startswith("https://")
+                    or url.startswith("#")):
+                html = html.replace(
+                    url, f"http://{ARGS.host}:{ARGS.port}/@static{cwd}{url}")
 
-    return html
+        htmlblocks.append([hash(html), html])
+
+    return htmlblocks
 
 
 # open a new browser

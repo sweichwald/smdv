@@ -192,10 +192,6 @@
 
 
 
-  <script src="https://cdn.jsdelivr.net/npm/morphdom@2.6.0/dist/morphdom.min.js"></script>
-
-
-
   <!-- viz.js -->
   <script src="https://github.com/mdaines/viz.js/releases/download/v2.1.2/viz.js"></script>
   <script src="https://github.com/mdaines/viz.js/releases/download/v2.1.2/full.render.js"></script>
@@ -305,27 +301,81 @@ var updateNavbar = function () {
 }
 
 // body
-var updateBody = function () {
-    container = document.getElementById("content");
-    if (message.fileOpen) {
-        newcontent = message.fileBody;
+function _log(...args)
+{
+    // console.log(...args);
+}
+
+function swapElements(obj1, obj2) {
+    // save the location of obj2
+    const next2 = obj2.nextSibling;
+    // special case for obj1 is the next sibling of obj2
+    if (next2 === obj1) {
+        // just put obj1 before obj2
+        container.insertBefore(obj1, obj2);
     } else {
-        newcontent = message.cwdBody;
-    }
-//     container.innerHTML = newcontent;
-    morphdom(
-        container,
-        '<div class="markdown-body" id="content">'.concat(newcontent, '</div>'),
-        {
-            onBeforeElUpdated: function(fromEl, toEl) {
-                // spec - https://dom.spec.whatwg.org/#concept-node-equals
-                if (fromEl.isEqualNode(toEl)) {
-                    return false
-                }
-                return true
-            }
+        // insert obj2 right before obj1
+        obj1.parentNode.insertBefore(obj2, obj1);
+
+        // now insert obj1 where obj2 was
+        if (next2) {
+            // if there was an element after obj2, then insert obj1 right before that
+            container.insertBefore(obj1, next2);
+        } else {
+            // otherwise, just append as last child
+            container.appendChild(obj1);
         }
-    );
+    }
+}
+
+function updateBodyFromBlocks(contentnew)
+{
+    // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
+    let i;
+    for(i = 0; i < contentnew.length; i++) {
+
+        const newhash = contentnew[i][0];
+
+        // Check if node with hash of new block already exists
+        // If it exists: Take it and move it to position i if needed
+        // If it doesn't exist: Create it and insert it
+        // Only check at position >= i so that we don't move away nodes we already put at positions < i
+        // This is important if multiple content elements with the same hash exist
+        let j;
+        for(j = i; j < children.length && children[j].getAttribute(hashAttr) != newhash; j++);
+
+        if(j < children.length) {
+            _log('hash does exist -- at position:', j);
+            if(j != i) {
+                _log('swapping', j, i);
+                swapElements(children[j], children[i]);
+            }
+        } else {
+            _log('hash does not exist yet, creating new');
+            const newEl = document.createElement('div');
+            newEl.setAttribute(hashAttr, newhash);
+            newEl.innerHTML = contentnew[i][1];
+            container.insertBefore(newEl, children[i]);
+        }
+    }
+
+    // Now all non-needed elements from original content should be at the end and we can remove them
+    _log('Removing ');
+    while(children.length > i)
+        container.removeChild(children[children.length-1])
+}
+
+const container = document.getElementById('content');
+const children = container.children;
+const hashAttr = 'data-hash';
+
+var updateBody = function () {
+    const contentnew = message.fileOpen ? message.fileBody : message.cwdBody;
+    if(Array.isArray(contentnew))
+        updateBodyFromBlocks(contentnew);
+    else
+        container.innerHTML = contentnew;
+
     updateViz();
 }
 
