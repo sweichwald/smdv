@@ -667,6 +667,7 @@ def json2html(inputstr):
         input=inputstr.encode()).stdout.decode()
 
 
+urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 def md2body(content: str = "") -> str:
     """ convert markdown to html using pandoc markdown
 
@@ -707,19 +708,7 @@ def md2body(content: str = "") -> str:
             jsontext = jsontext.replace(markertag, '')
         html += "\n" + json2html(jsontext)
 
-        urls = (re.findall('src="(.*?)"', html)
-                + re.findall("src='(.*?)'", html)
-                + re.findall('href="(.*?)"', html)
-                + re.findall("href='(.*?)'", html))
-
-        for url in urls:
-            if not (
-                    url.startswith("/")
-                    or url.startswith("http://")
-                    or url.startswith("https://")
-                    or url.startswith("#")):
-                html = html.replace(
-                    url, f"http://{ARGS.host}:{ARGS.port}/@static{cwd}{url}")
+        html = urlRegex.sub(f'\\1="http://{ARGS.host}:{ARGS.port}/@static{cwd}\\2"', html)
 
         htmlblocks.append([hash(html), html])
 
