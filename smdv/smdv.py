@@ -45,7 +45,6 @@ import websockets
 
 # Globals
 ARGS = ""  # the smdv command line arguments
-SMDV_DEFAULT_ARGS = os.environ.get("SMDV_DEFAULT_ARGS", "")
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
 PYCLIENTS = set()  # pyclients update the html body of the jsclient
 WEBSOCKETS_SERVER = None  # websockets server
@@ -576,8 +575,7 @@ def main() -> int:
     """
     global ARGS
     try:
-        default_args = parse_args(SMDV_DEFAULT_ARGS.split(" "))
-        ARGS = parse_args(sys.argv[1:], **default_args.__dict__)
+        ARGS = parse_args(sys.argv[1:])
 
         # first do single-shot smdv flags:
         if ARGS.start_server:
@@ -740,12 +738,11 @@ def open_browser():
 
 
 # parse command line arguments
-def parse_args(args: tuple, **kwargs) -> argparse.Namespace:
+def parse_args(args: tuple) -> argparse.Namespace:
     """ populate the smdv command line arguments
 
     Args:
         args: the arguments to parse
-        **kwargs: override the default arguments
 
     Returns:
         parsed_args: the parsed arguments
@@ -758,19 +755,19 @@ def parse_args(args: tuple, **kwargs) -> argparse.Namespace:
         "filename",
         type=str,
         nargs="?",
-        default=kwargs.get("filename", ""),
+        default=os.environ.get("SMDV_DEFAULT_FILENAME", ""),
         help="path or file to open with smdv",
     )
     parser.add_argument(
         "-H",
         "--home",
-        default=kwargs.get("home", os.path.expanduser("~")),
+        default=os.environ.get("SMDV_DEFAULT_HOME", os.path.expanduser("~")),
         help="set the root folder of the smdv server",
     )
     parser.add_argument(
         "--stdin",
         nargs="?",
-        default=kwargs.get("stdin", "md"),
+        default=os.environ.get("SMDV_DEFAULT_STDIN", "md"),
         choices=["md", "html", "txt"],
         help=(
             "read content for smdv from stdin. Takes optional encoding types:"
@@ -780,33 +777,33 @@ def parse_args(args: tuple, **kwargs) -> argparse.Namespace:
     parser.add_argument(
         "-p",
         "--port",
-        default=kwargs.get("port", "9876"),
+        default=os.environ.get("SMDV_DEFAULT_PORT", "9876"),
         help="port on which smdv is served.",
     )
     parser.add_argument(
         "-w",
         "--websocket-port",
-        default=kwargs.get("websocket_port", "9877"),
+        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_PORT", "9877"),
         help="port for websocket communication",
     )
     parser.add_argument(
         "--host",
-        default=kwargs.get("host", "localhost"),
+        default=os.environ.get("SMDV_DEFAULT_HOST", "localhost"),
         help=("host on which smdv is served "
               "(for now, only localhost is supported)"),
         choices=["localhost", "127.0.0.1"],
     )
     parser.add_argument(
         "--websocket-host",
-        default=kwargs.get("websocket_host", "localhost"),
+        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_HOST", "localhost"),
         help=("host for websocket communication "
               "(for now, only localhost is supported)"),
         choices=["localhost", "127.0.0.1"],
     )
     parser.add_argument(
         "--css",
-        default=kwargs.get(
-            "css",
+        default=os.environ.get(
+            "SMDV_DEFAULT_CSS",
             f"{BASE_DIR}/smdv.css",
         ),
         help="location of a local markdown css file",
@@ -814,46 +811,46 @@ def parse_args(args: tuple, **kwargs) -> argparse.Namespace:
     parser.add_argument(
         "-b",
         "--browser",
-        default=kwargs.get("browser", os.environ.get("BROWSER", "")),
+        default=os.environ.get("SMDV_DEFAULT_BROWSER", os.environ.get("BROWSER", "")),
         help="default browser to spawn (uses $BROWSER by default)",
     )
     parser.add_argument(
         "-r",
         "--restart",
         action="store_true",
-        default=kwargs.get("restart", False),
+        default=os.environ.get("SMDV_DEFAULT_RESTART", False),
         help="force a restart of smdv (both servers)",
     )
     parser.add_argument(
         "--hide-navbar",
         action="store_true",
-        default=kwargs.get("hide_navbar", False),
+        default=os.environ.get("SMDV_DEFAULT_HIDE_NAVBAR", False),
         help="don't show the smdv navbar by default",
     )
     parser.add_argument(
         "-t",
         "--terminal",
-        default=kwargs.get("terminal", os.environ.get("TERMINAL", "")),
+        default=os.environ.get("SMDV_DEFAULT_TERMINAL", os.environ.get("TERMINAL", "")),
         help="default terminal to spawn (uses $TERMINAL by default)",
     )
     parser.add_argument(
         "-B",
         "--no-browser",
         action="store_true",
-        default=kwargs.get("no_browser", False),
+        default=os.environ.get("SMDV_DEFAULT_NO_BROWSER", False),
         help="start the server without opening a browser.",
     )
     parser.add_argument(
         "-v",
         "--nvim-address",
-        default=kwargs.get("nvim_address", "127.0.0.1:9878"),
+        default=os.environ.get("SMDV_DEFAULT_NVIM_ADDRESS", "127.0.0.1:9878"),
         help="address or socket to communicate with vim",
     )
     parser.add_argument(
         "-i",
         "--interactive",
         action="store_true",
-        default=kwargs.get("interactive", False),
+        default=os.environ.get("SMDV_DEFAULT_INTERACTIVE", False),
         help=("open smdv in interactive mode (every file opened in "
               "smdv will also automatically be opened in vim)."),
     )
@@ -861,49 +858,49 @@ def parse_args(args: tuple, **kwargs) -> argparse.Namespace:
     single_shot_arguments.add_argument(
         "--server-status",
         action="store_true",
-        default=kwargs.get("server_status", False),
+        default=os.environ.get("SMDV_DEFAULT_SERVER_STATUS", False),
         help="ask status of the smdv server",
     )
     single_shot_arguments.add_argument(
         "--websocket-server-status",
         action="store_true",
-        default=kwargs.get("websocket_server_status", False),
+        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_SERVER_STATUS", False),
         help="ask status of the smdv server",
     )
     single_shot_arguments.add_argument(
         "--start-server",
         action="store_true",
-        default=kwargs.get("start_server", False),
+        default=os.environ.get("SMDV_DEFAULT_START_SERVER", False),
         help="start the smdv server (without doing anything else)",
     )
     single_shot_arguments.add_argument(
         "--stop-server",
         action="store_true",
-        default=kwargs.get("stop_server", False),
+        default=os.environ.get("SMDV_DEFAULT_STOP_SERVER", False),
         help="stop the smdv server (without doing anything else)",
     )
     single_shot_arguments.add_argument(
         "--start-websocket-server",
         action="store_true",
-        default=kwargs.get("start_websocket_server", False),
+        default=os.environ.get("SMDV_DEFAULT_START_WEBSOCKET_SERVER", False),
         help="start the smdv websocket server (without doing anything else)",
     )
     single_shot_arguments.add_argument(
         "--stop-websocket-server",
         action="store_true",
-        default=kwargs.get("stop_websocket_server", False),
+        default=os.environ.get("SMDV_DEFAULT_STOP_WEBSOCKET_SERVER", False),
         help="stop the smdv websocket server (without doing anything else)",
     )
     single_shot_arguments.add_argument(
         "--stop",
         action="store_true",
-        default=kwargs.get("stop", False),
+        default=os.environ.get("SMDV_DEFAULT_STOP", False),
         help="stop smdv running in the background (kills both servers)",
     )
     single_shot_arguments.add_argument(
         "--start",
         action="store_true",
-        default=kwargs.get("start", False),
+        default=os.environ.get("SMDV_DEFAULT_START", False),
         help="start smdv (both servers)",
     )
     parsed_args = parser.parse_args(args=args)

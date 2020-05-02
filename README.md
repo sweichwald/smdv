@@ -39,7 +39,7 @@ If installed within a virtual environment, ensure that smdv is appropriately lin
 
 Use in conjunction with [vim-instant-markdown][vim] to preview pandoc markdown in the browser while editing in vim.
 
-For configuration options consult `smdv --help`; configuration is also possible via environment variable `SMDV_DEFAULT_ARGS`.
+For configuration options consult `smdv --help`; configuration is also possible via environment variables with name pattern `SMDV_DEFAULT_[ARG]`.
 
 
 
