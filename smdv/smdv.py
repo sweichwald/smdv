@@ -59,7 +59,6 @@ MESSAGE = {}
 
 # Templates
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-HTMLTEMPLATE = open(f'{BASE_DIR}/smdv.html', 'r').read()
 
 
 # Async functions (alphabetic)
@@ -314,7 +313,7 @@ def create_app():
             except FileNotFoundError:
                 return flask.abort(404)
 
-            html = HTMLTEMPLATE
+            html = open(f'{BASE_DIR}/smdv.html', 'r').read()
             replacements = {
                 '{SMDV-home-SMDV}': ARGS.home,
                 '{SMDV-interactive-SMDV}':
