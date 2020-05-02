@@ -35,8 +35,11 @@ import http.client
 from functools import lru_cache
 
 # 3rd party dependencies
-import flask
 import websockets
+
+# import flask lazily
+from .utils import limport
+flask = limport('flask')
 
 # 3rd party CLI dependencies
 # fuser
@@ -270,7 +273,7 @@ def change_current_working_directory(path: str) -> str:
 
 
 # flask app factory
-def create_app() -> flask.Flask:
+def create_app():
     """ flask app factory
 
     Returns:
@@ -815,7 +818,9 @@ def parse_args(args: tuple) -> argparse.Namespace:
     parser.add_argument(
         "-b",
         "--browser",
-        default=os.environ.get("SMDV_DEFAULT_BROWSER", os.environ.get("BROWSER", "")),
+        default=os.environ.get(
+            "SMDV_DEFAULT_BROWSER",
+            os.environ.get("BROWSER", "")),
         help="default browser to spawn (uses $BROWSER by default)",
     )
     parser.add_argument(
@@ -834,7 +839,9 @@ def parse_args(args: tuple) -> argparse.Namespace:
     parser.add_argument(
         "-t",
         "--terminal",
-        default=os.environ.get("SMDV_DEFAULT_TERMINAL", os.environ.get("TERMINAL", "")),
+        default=os.environ.get(
+            "SMDV_DEFAULT_TERMINAL",
+            os.environ.get("TERMINAL", "")),
         help="default terminal to spawn (uses $TERMINAL by default)",
     )
     parser.add_argument(
