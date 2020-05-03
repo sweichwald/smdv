@@ -29,7 +29,6 @@ import asyncio
 import argparse
 import warnings
 import subprocess
-import webbrowser
 import collections
 import http.client
 from functools import lru_cache
@@ -62,17 +61,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Async functions (alphabetic)
 
-# as number of js clients
-async def ask_num_js_clients():
-    """ ask the number of js clients from the websocket server """
-    async with websockets.connect(
-        f"ws://{ARGS.websocket_host}:{ARGS.websocket_port}"
-    ) as websocket:
-        await websocket.send(json.dumps(
-            {"client": "py", "func": "numJSClients"}))
-        num_clients = await websocket.recv()
-    return int(num_clients)
-
 
 # handle a message sent by one of the clients:
 async def handle_message(client: websockets.WebSocketServerProtocol,
@@ -87,9 +75,6 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
     if "cwd" in message:
         os.chdir(ARGS.home + message["cwd"])
     if not func:
-        return
-    if func == "numJSClients":
-        await client.send(str(len(JSCLIENTS)))
         return
     if func == "back":
         if len(BACKMESSAGES) < 2:
@@ -529,12 +514,6 @@ def kill_websocket_server() -> int:
     return exit_status
 
 
-# ask the number of
-def number_of_connected_jsclients():
-    """ ask the websocket server for the number of connected js clients """
-    return EVENT_LOOP.run_until_complete(ask_num_js_clients())
-
-
 # main smdv program
 def main() -> int:
     """ The main smdv program
@@ -591,11 +570,6 @@ def main() -> int:
 
         # wait for the websocket server to be fully started:
         wait_for_server(server="websocket", status="running")
-
-        # if no browser connection can be found: open browser
-        if not ARGS.no_browser and number_of_connected_jsclients() == 0:
-            open_browser()
-            wait_for_connected_jsclient()
 
         # if a filename was given and something was piped into smdv,
         # throw error:
@@ -685,24 +659,6 @@ def md2body(content: str = "") -> str:
     return htmlblocks
 
 
-# open a new browser
-def open_browser():
-    """ spawn a new browser to open smdv
-
-    Args:
-        filename: str="": the filename to open the browser at.
-    """
-    url = f"http://{ARGS.host}:{ARGS.port}"
-    if ARGS.browser == "chromium --app":
-        subprocess.Popen(["chromium", f"--app={url}"])
-    elif ARGS.browser:
-        subprocess.Popen([ARGS.browser, url])
-    elif subprocess.call(["which", "xdg-open"]) == 0:
-        subprocess.Popen(["xdg-open", url])
-    else:
-        webbrowser.open(url)
-
-
 # parse command line arguments
 def parse_args(args=None) -> argparse.Namespace:
     """ populate the smdv command line arguments
@@ -776,14 +732,6 @@ def parse_args(args=None) -> argparse.Namespace:
         help="location of a local markdown css file",
     )
     parser.add_argument(
-        "-b",
-        "--browser",
-        default=os.environ.get(
-            "SMDV_DEFAULT_BROWSER",
-            os.environ.get("BROWSER", "")),
-        help="default browser to spawn (uses $BROWSER by default)",
-    )
-    parser.add_argument(
         "-r",
         "--restart",
         action="store_true",
@@ -797,13 +745,6 @@ def parse_args(args=None) -> argparse.Namespace:
             "SMDV_DEFAULT_TERMINAL",
             os.environ.get("TERMINAL", "")),
         help="default terminal to spawn (uses $TERMINAL by default)",
-    )
-    parser.add_argument(
-        "-B",
-        "--no-browser",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_NO_BROWSER", False),
-        help="start the server without opening a browser.",
     )
     single_shot_arguments = parser.add_mutually_exclusive_group()
     single_shot_arguments.add_argument(
@@ -1095,26 +1036,6 @@ def validate_message(message: str):
         for key in keys:
             assert key in message, f"message {message} has no key '{key}'"
             assert key in keys, f"{key} is not a valid message key"
-
-
-# wait until at least on js client is online.
-def wait_for_connected_jsclient(interval: float = 0.3, max_attempts: int = 6):
-    """ wait until a connection to the browser can be made.
-
-    Args:
-        interval: the interval time to check for the websocket server
-        connection
-        max_attempts: the maximum number of tries before exiting with failure
-
-    Returns:
-        exit_status: the exit status after waiting
-    """
-    for _ in range(max_attempts):  # max 10 tries, throw error otherwise
-        if number_of_connected_jsclients() > 0:
-            return
-        time.sleep(interval)
-    raise ConnectionRefusedError(
-        "could not establish a connection with a browser")
 
 
 # block until a connection to the websocket server can be established
