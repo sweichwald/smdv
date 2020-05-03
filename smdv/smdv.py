@@ -22,21 +22,20 @@ import os
 import re
 import sys
 import json
-import time
 import socket
 import asyncio
 import argparse
 import subprocess
 import collections
-import http.client
 from functools import lru_cache
 
 # 3rd party dependencies
 import websockets
 
-# import flask lazily
+# import flask and http.client lazily
 from .utils import limport
 flask = limport('flask')
+httpclient = limport('http.client')
 
 # 3rd party CLI dependencies
 # fuser
@@ -457,86 +456,6 @@ def is_binary_file(filename: str) -> bool:
         return False
 
 
-# kill the websocket server
-def kill_websocket_server() -> int:
-    """ kills the websocket server
-
-    TODO: find a way to do this more gracefully.
-
-    Returns:
-        exit_status: the exit status of the subprocess `fuser -k` system call
-    """
-    exit_status = subprocess.call(
-        ["fuser", "-k", f"{ARGS.websocket_port}/tcp"])
-    return exit_status
-
-
-# main smdv program
-def main() -> int:
-    """ The main smdv program
-
-    Returns:
-        exit_status: the exit status of smdv.
-    """
-    global ARGS
-    try:
-        ARGS = parse_args()
-
-        # first do single-shot smdv flags:
-        if ARGS.start_server:
-            run_flask_server()
-            return 0
-        if ARGS.stop_server:
-            exit_status = send_delete_request_to_server()
-            return exit_status
-        if ARGS.start_websocket_server:
-            run_websocket_server()
-            return 0
-        if ARGS.stop_websocket_server:
-            exit_status = kill_websocket_server()
-            return exit_status
-        if ARGS.start:
-            run_server_in_subprocess(server="flask")
-            run_server_in_subprocess(server="websocket")
-            return 0
-        if ARGS.stop:
-            exit_status1 = send_delete_request_to_server()
-            exit_status2 = kill_websocket_server()
-            exit_status = exit_status1 + exit_status2
-            return exit_status
-        if ARGS.server_status:
-            print(request_server_status(server="flask"))
-            return 0
-        if ARGS.websocket_server_status:
-            print(request_server_status(server="websocket"))
-            return 0
-
-        # first, start websocket server.
-        # Assume the server is already running on failure
-        if ARGS.restart:  # force restart
-            kill_websocket_server()
-            wait_for_server(server="websocket", status="stopped")
-
-        # next, start smdv server.
-        # Assume the server is already running on failure
-        if ARGS.restart:  # force restart
-            send_delete_request_to_server()
-            wait_for_server(server="flask", status="stopped")
-
-        # if filename argument was given, sync filename or stdin to smdv
-        if ARGS.filename:
-            update_filename()
-            return 0
-
-        # only happens when no arguments are supplied,
-        # nor anything was piped into smdv:
-        return 0
-
-    except Exception as e:
-        print(e, file=sys.stderr)
-        return 1
-
-
 @lru_cache(maxsize=10000)
 def json2html(inputstr):
     return subprocess.run(
@@ -597,132 +516,6 @@ def md2body(content: str = "") -> str:
     return htmlblocks
 
 
-# parse command line arguments
-def parse_args(args=None) -> argparse.Namespace:
-    """ populate the smdv command line arguments
-
-    Args:
-        args: the arguments to parse
-
-    Returns:
-        parsed_args: the parsed arguments
-
-    """
-    # Argument parser
-    parser = argparse.ArgumentParser(
-        description="smdv: a Simple MarkDown Viewer")
-    parser.add_argument(
-        "filename",
-        type=argparse.FileType('r'),
-        nargs="?",
-        default=(None if sys.stdin.isatty() else sys.stdin),
-        help="path or file to open with smdv",
-    )
-    parser.add_argument(
-        "-H",
-        "--home",
-        default=os.environ.get("SMDV_DEFAULT_HOME", os.path.expanduser("~")),
-        help="set the root folder of the smdv server",
-    )
-    parser.add_argument(
-        "-p",
-        "--port",
-        default=os.environ.get("SMDV_DEFAULT_PORT", "9876"),
-        help="port on which smdv is served.",
-    )
-    parser.add_argument(
-        "-w",
-        "--websocket-port",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_PORT", "9877"),
-        help="port for websocket communication",
-    )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("SMDV_DEFAULT_HOST", "localhost"),
-        help=("host on which smdv is served "
-              "(for now, only localhost is supported)"),
-        choices=["localhost", "127.0.0.1"],
-    )
-    parser.add_argument(
-        "--websocket-host",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_HOST", "localhost"),
-        help=("host for websocket communication "
-              "(for now, only localhost is supported)"),
-        choices=["localhost", "127.0.0.1"],
-    )
-    parser.add_argument(
-        "--css",
-        default=os.environ.get(
-            "SMDV_DEFAULT_CSS",
-            f"{BASE_DIR}/smdv.css",
-        ),
-        help="location of a local markdown css file",
-    )
-    parser.add_argument(
-        "-r",
-        "--restart",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_RESTART", False),
-        help="force a restart of smdv (both servers)",
-    )
-    single_shot_arguments = parser.add_mutually_exclusive_group()
-    single_shot_arguments.add_argument(
-        "--server-status",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_SERVER_STATUS", False),
-        help="ask status of the smdv server",
-    )
-    single_shot_arguments.add_argument(
-        "--websocket-server-status",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_SERVER_STATUS", False),
-        help="ask status of the smdv server",
-    )
-    single_shot_arguments.add_argument(
-        "--start-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START_SERVER", False),
-        help="start the smdv server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP_SERVER", False),
-        help="stop the smdv server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--start-websocket-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START_WEBSOCKET_SERVER", False),
-        help="start the smdv websocket server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop-websocket-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP_WEBSOCKET_SERVER", False),
-        help="stop the smdv websocket server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP", False),
-        help="stop smdv running in the background (kills both servers)",
-    )
-    single_shot_arguments.add_argument(
-        "--start",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START", False),
-        help="start smdv (both servers)",
-    )
-    parsed_args = parser.parse_args(args=args)
-    if parsed_args.home.endswith("/"):
-        parsed_args.home = parsed_args.home[:-1]
-    if not os.path.isdir(parsed_args.home):
-        raise ValueError(
-            f"invalid home location given from smdv: {parsed_args.home}")
-    return parsed_args
-
-
 # print a message (useful for logging)
 def print_message(message: dict, **kwargs):
     """ print a message
@@ -739,85 +532,6 @@ def print_message(message: dict, **kwargs):
             print(f"{'    '*indent}{k}\t{repr(v)}")
 
 
-# get status for the smdv server
-def request_server_status(server: str = "flask") -> str:
-    """ request the smdv server status
-
-    Args:
-        server: the server to ask the status for ["flask", "websocket"]
-
-    Returns:
-        status: str: the smdv server status
-    """
-    if server == "websocket":
-        connection = http.client.HTTPConnection(
-            ARGS.websocket_host, ARGS.websocket_port
-        )
-    elif server == "flask":
-        connection = http.client.HTTPConnection(ARGS.host, ARGS.port)
-    else:
-        raise ValueError(
-            "request_server_status expects a server value of "
-            "'flask' or 'server'"
-        )
-    try:
-        connection.connect()
-        server_status = "running"
-    except ConnectionRefusedError:
-        server_status = "stopped"
-    finally:
-        connection.close()
-    return server_status
-
-
-# run the flask server
-def run_flask_server():
-    """ start the flask server """
-    create_app().run(
-        debug=False, port=ARGS.port, host=ARGS.host, threaded=True)
-
-
-# run server in new subprocess
-def run_server_in_subprocess(server="flask"):
-    """ start the websocket server in a subprocess
-
-    Args:
-        server: which server to run in subprocess ["flask", "websocket"]
-    """
-    args = {
-        "--home": ARGS.home,
-        "--port": ARGS.port,
-        "--websocket-port": ARGS.websocket_port,
-        "--host": ARGS.host,
-        "--websocket-host": ARGS.websocket_host,
-        "--css": ARGS.css,
-    }
-
-    args_list = [str(s) for kv in args.items() for s in kv]
-    if server == "flask":
-        args_list += ["--start-server"]
-    elif server == "websocket":
-        args_list += ["--start-websocket-server"]
-    else:
-        raise ValueError(
-            "server to start in subprocess should be either "
-            "'flask' or 'websocket'"
-        )
-    with open(os.devnull, "w") as null:
-        subprocess.Popen(["smdv"] + args_list, stdout=null, stderr=null)
-
-
-# websocket server
-def run_websocket_server():
-    """ start and run the websocket server """
-    global WEBSOCKETS_SERVER
-    WEBSOCKETS_SERVER = websockets.serve(
-        serve_client, ARGS.websocket_host, ARGS.websocket_port
-    )
-    EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
-    EVENT_LOOP.run_forever()
-
-
 # send a message to the websocket server at the python client
 def send_as_pyclient(message: dict):
     """ send a message to the websocket server as the python client
@@ -829,27 +543,6 @@ def send_as_pyclient(message: dict):
         EVENT_LOOP.run_until_complete(send_as_pyclient_async(message))
     except RuntimeError:
         pass  # allows messages to be lost when sending many messages at once.
-
-
-# stop the smdv server
-def send_delete_request_to_server():
-    """ stop the smdv server by sending a DELETE request
-
-    Returns:
-        exit_status: the exit status (0=success, 1=failure)
-    """
-    connection = http.client.HTTPConnection(ARGS.host, ARGS.port)
-    try:
-        connection.connect()
-        connection.request("DELETE", "/")
-        response = connection.getresponse().read().decode().strip()
-        exit_code = 0 if response == "success." else 1
-    except Exception as e:
-        print(e)
-        exit_code = 1
-    finally:
-        connection.close()
-        return exit_code
 
 
 # send message to smdv to load filename or live_pipe
@@ -937,35 +630,279 @@ def validate_message(message: str):
             assert key in keys, f"{key} is not a valid message key"
 
 
-# block until a connection to the websocket server can be established
-def wait_for_server(
-    interval: float = 0.3,
-    max_attempts: int = 10,
-    server: str = "flask",
-    status: str = "running",
-):
-    """ wait until a connection to one of the servers can be established
+# run the flask server
+def run_flask_server():
+    global ARGS
+    ARGS = parse_args()
+    """ start the flask server """
+    create_app().run(
+        debug=False, port=ARGS.port, host=ARGS.host, threaded=True)
+
+
+# websocket server
+def run_websocket_server():
+    """ start and run the websocket server """
+    global WEBSOCKETS_SERVER
+    global ARGS
+    ARGS = parse_args()
+    WEBSOCKETS_SERVER = websockets.serve(
+        serve_client, ARGS.websocket_host, ARGS.websocket_port
+    )
+    EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
+    EVENT_LOOP.run_forever()
+
+
+# run server in new subprocess
+def run_server_in_subprocess(server="flask"):
+    """ start the websocket server in a subprocess
 
     Args:
-        interval: the interval time to check for the websocket server
-        connection
-        max_attempts: the maximum number of tries before exiting with failure
-        server: the server to ask the status for ["flask", "websocket"]
-        status: wait for ["running", "stopped"] status.
+        server: which server to run in subprocess ["flask", "websocket"]
+    """
+    args = {
+        "--home": ARGS.home,
+        "--port": ARGS.port,
+        "--websocket-port": ARGS.websocket_port,
+        "--host": ARGS.host,
+        "--websocket-host": ARGS.websocket_host,
+        "--css": ARGS.css,
+    }
+    args_list = [str(s) for kv in args.items() for s in kv]
+    subprocess.Popen([f"smdv-{server}"] + args_list)
+
+
+def stop_flask_server():
+    """ stop the smdv server by sending a DELETE request
 
     Returns:
-        exit_status: the exit status after waiting
+        exit_status: the exit status (0=success, 1=failure)
     """
-    if status not in ["running", "stopped"]:
+    connection = httpclient.HTTPConnection(ARGS.host, ARGS.port)
+    try:
+        connection.connect()
+        connection.request("DELETE", "/")
+        response = connection.getresponse().read().decode().strip()
+        exit_code = 0 if response == "success." else 1
+    except Exception as e:
+        print(e)
+        exit_code = 1
+    finally:
+        connection.close()
+        return exit_code
+
+
+def stop_websocket_server():
+    """ kills the websocket server
+
+    TODO: find a way to do this more gracefully.
+
+    Returns:
+        exit_status: the exit status of the subprocess `fuser -k` system call
+    """
+    exit_status = subprocess.call(
+        ["fuser", "-k", f"{ARGS.websocket_port}/tcp"])
+    return exit_status
+
+
+# get status for the smdv server
+def request_server_status(server: str = "flask") -> str:
+    """ request the smdv server status
+
+    Args:
+        server: the server to ask the status for ["flask", "websocket"]
+
+    Returns:
+        status: str: the smdv server status
+    """
+    if server == "flask":
+        connection = httpclient.HTTPConnection(ARGS.host,
+                                               ARGS.port)
+    elif server == "websocket":
+        connection = httpclient.HTTPConnection(ARGS.websocket_host,
+                                               ARGS.websocket_port)
+    else:
         raise ValueError(
-            "wait for server expects status 'running' or 'stopped'")
-    for _ in range(max_attempts):  # max 10 tries, throw error otherwise
-        if request_server_status(server=server) == "running":
-            return
-        time.sleep(interval)
-    raise ConnectionRefusedError(
-        f"connection to {server} server could not be established"
+            "request_server_status expects a server value of "
+            "'flask' or 'server'"
+        )
+    try:
+        connection.connect()
+        server_status = "running"
+    except ConnectionRefusedError:
+        server_status = "stopped"
+    finally:
+        connection.close()
+    return server_status
+
+
+def parse_args(args=None) -> argparse.Namespace:
+    """ populate the smdv command line arguments
+
+    Args:
+        args: the arguments to parse
+
+    Returns:
+        parsed_args: the parsed arguments
+
+    """
+    # Argument parser
+    parser = argparse.ArgumentParser(
+        description="smdv: a Simple MarkDown Viewer")
+    parser.add_argument(
+        "filename",
+        type=argparse.FileType('r'),
+        nargs="?",
+        default=(None if sys.stdin.isatty() else sys.stdin),
+        help="path or file to open with smdv",
     )
+    parser.add_argument(
+        "-H",
+        "--home",
+        default=os.environ.get("SMDV_DEFAULT_HOME", os.path.expanduser("~")),
+        help="set the root folder of the smdv server",
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        default=os.environ.get("SMDV_DEFAULT_PORT", "9876"),
+        help="port on which smdv is served.",
+    )
+    parser.add_argument(
+        "-w",
+        "--websocket-port",
+        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_PORT", "9877"),
+        help="port for websocket communication",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("SMDV_DEFAULT_HOST", "localhost"),
+        help=("host on which smdv is served "
+              "(for now, only localhost is supported)"),
+        choices=["localhost", "127.0.0.1"],
+    )
+    parser.add_argument(
+        "--websocket-host",
+        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_HOST", "localhost"),
+        help=("host for websocket communication "
+              "(for now, only localhost is supported)"),
+        choices=["localhost", "127.0.0.1"],
+    )
+    parser.add_argument(
+        "--css",
+        default=os.environ.get(
+            "SMDV_DEFAULT_CSS",
+            f"{BASE_DIR}/smdv.css",
+        ),
+        help="location of a local markdown css file",
+    )
+    single_shot_arguments = parser.add_mutually_exclusive_group()
+    single_shot_arguments.add_argument(
+        "--server-status",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_SERVER_STATUS", False),
+        help="ask status of the smdv server",
+    )
+    single_shot_arguments.add_argument(
+        "--websocket-server-status",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_SERVER_STATUS", False),
+        help="ask status of the smdv server",
+    )
+    single_shot_arguments.add_argument(
+        "--start-server",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_START_SERVER", False),
+        help="start the smdv server (without doing anything else)",
+    )
+    single_shot_arguments.add_argument(
+        "--stop-server",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_STOP_SERVER", False),
+        help="stop the smdv server (without doing anything else)",
+    )
+    single_shot_arguments.add_argument(
+        "--start-websocket-server",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_START_WEBSOCKET_SERVER", False),
+        help="start the smdv websocket server (without doing anything else)",
+    )
+    single_shot_arguments.add_argument(
+        "--stop-websocket-server",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_STOP_WEBSOCKET_SERVER", False),
+        help="stop the smdv websocket server (without doing anything else)",
+    )
+    single_shot_arguments.add_argument(
+        "--stop",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_STOP", False),
+        help="stop smdv running in the background (kills both servers)",
+    )
+    single_shot_arguments.add_argument(
+        "--start",
+        action="store_true",
+        default=os.environ.get("SMDV_DEFAULT_START", False),
+        help="start smdv (both servers)",
+    )
+    parsed_args = parser.parse_args(args=args)
+    if parsed_args.home.endswith("/"):
+        parsed_args.home = parsed_args.home[:-1]
+    if not os.path.isdir(parsed_args.home):
+        raise ValueError(
+            f"invalid home location given from smdv: {parsed_args.home}")
+    return parsed_args
+
+
+def main():
+    """ The main smdv program
+
+    Returns:
+        exit_status: the exit status of smdv.
+    """
+    global ARGS
+    try:
+        ARGS = parse_args()
+
+        # first do single-shot smdv flags:
+        if ARGS.start_server:
+            run_server_in_subprocess(server="flask")
+            return 0
+        if ARGS.stop_server:
+            return stop_flask_server()
+        if ARGS.server_status:
+            print(request_server_status(server="flask"))
+            return 0
+
+        if ARGS.start_websocket_server:
+            run_server_in_subprocess(server="websocket")
+            return 0
+        if ARGS.stop_websocket_server:
+            return stop_websocket_server()
+        if ARGS.websocket_server_status:
+            print(request_server_status(server="websocket"))
+            return 0
+
+        if ARGS.start:
+            run_server_in_subprocess(server="flask")
+            run_server_in_subprocess(server="websocket")
+            return 0
+        if ARGS.stop:
+            exit_status1 = stop_flask_server()
+            exit_status2 = stop_websocket_server()
+            return exit_status1 + exit_status2
+
+        # if filename argument was given, sync filename or stdin to smdv
+        if ARGS.filename:
+            update_filename()
+            return 0
+
+        # only happens when no arguments are supplied,
+        # nor anything was piped into smdv:
+        return 0
+
+    except Exception as e:
+        print(e, file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

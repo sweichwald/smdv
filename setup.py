@@ -24,7 +24,10 @@ if __name__ == "__main__":
         long_description_content_type="text/markdown",
         url="https://github.com/sweichwald/smdv",
         license="GPLv3",
-        entry_points={"console_scripts": ["smdv = smdv.smdv:main"]},
+        entry_points={"console_scripts": [
+            "smdv = smdv.smdv:main",
+            "smdv-flask = smdv.smdv:run_flask_server",
+            "smdv-websocket = smdv.smdv:run_websocket_server"]},
         python_requires=">=3.6",
         install_requires=install_requires,
         classifiers=[
