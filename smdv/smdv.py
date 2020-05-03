@@ -26,7 +26,6 @@ import time
 import socket
 import asyncio
 import argparse
-import warnings
 import subprocess
 import collections
 import http.client
@@ -381,7 +380,7 @@ def encode(message: dict) -> dict:
         else:
             encoding = os.path.splitext(message.get("filename"))[1][1:]
             if not encoding:
-                encoding = ARGS.stdin
+                encoding = "md"
         message["fileEncoding"] = encoding
     if encoding == "md":
         message["fileBody"] = md2body(message["fileBody"])
@@ -529,23 +528,9 @@ def main() -> int:
         # wait for the websocket server to be fully started:
         wait_for_server(server="websocket", status="running")
 
-        # if a filename was given and something was piped into smdv,
-        # throw error:
-        if ARGS.filename and not os.isatty(0):
-            warnings.warn(
-                "when piping into smdv while supplying a "
-                "filename, the filename takes precedence."
-            )
-
-        # if filename argument was given, sync filename to smdv
+        # if filename argument was given, sync filename or stdin to smdv
         if ARGS.filename:
             update_filename()
-            return 0
-
-        # else, check if something was piped into smdv and
-        # update the body accordingly:
-        if not os.isatty(0):
-            send_message_from_stdin()
             return 0
 
         # only happens when no arguments are supplied,
@@ -633,9 +618,9 @@ def parse_args(args=None) -> argparse.Namespace:
         description="smdv: a Simple MarkDown Viewer")
     parser.add_argument(
         "filename",
-        type=str,
+        type=argparse.FileType('r'),
         nargs="?",
-        default=os.environ.get("SMDV_DEFAULT_FILENAME", ""),
+        default=(None if sys.stdin.isatty() else sys.stdin),
         help="path or file to open with smdv",
     )
     parser.add_argument(
@@ -643,17 +628,6 @@ def parse_args(args=None) -> argparse.Namespace:
         "--home",
         default=os.environ.get("SMDV_DEFAULT_HOME", os.path.expanduser("~")),
         help="set the root folder of the smdv server",
-    )
-    parser.add_argument(
-        "--stdin",
-        nargs="?",
-        default=os.environ.get("SMDV_DEFAULT_STDIN", "md"),
-        choices=["md", "html", "txt"],
-        const="md",
-        help=(
-            "read content for smdv from stdin. Takes optional encoding types:"
-            "    md (default), html"
-        ),
     )
     parser.add_argument(
         "-p",
@@ -817,7 +791,6 @@ def run_server_in_subprocess(server="flask"):
     """
     args = {
         "--home": ARGS.home,
-        "--stdin": ARGS.stdin,
         "--port": ARGS.port,
         "--websocket-port": ARGS.websocket_port,
         "--host": ARGS.host,
@@ -884,25 +857,30 @@ def send_delete_request_to_server():
         return exit_code
 
 
-# update body of smdv from stdin
-def send_message_from_stdin():
-    """ read content from stdin and place it in the html body """
-    content = sys.stdin.read()
-    try:
-        message = json.loads(content)
-    except json.decoder.JSONDecodeError:
-        message = {"fileBody": content}
-    cwd = os.path.abspath(
-        os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
-    message["func"] = message.get("func", "file")
-    message["cwd"] = message.get("cwd", cwd)
-    message["cwdEncoded"] = bool(message.get("cwdEncoded", True))
-    message["cwdBody"] = message.get("cwdBody", dir2body(cwd))
-    message["cwdCwd"] = message.get("fileCwd", cwd)
-    message["filename"] = message.get("filename", "live_pipe")
-    message["fileEncoding"] = message.get("fileEncoding", ARGS.stdin)
-    message["fileEncoded"] = bool(message.get("fileEncoded", False))
-    message["fileOpen"] = bool(message.get("fileOpen", True))
+# send message to smdv to load filename or live_pipe
+def update_filename():
+    """ open filename in smdv """
+    path = ARGS.filename.name
+    if path == '<stdin>':
+        cwd = os.path.abspath(
+            os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
+        filename = 'live_pipe'
+    elif path.startswith(ARGS.home):
+        path = path[len(ARGS.home):]
+        cwd, filename = change_current_working_directory(path)
+    content = ARGS.filename.read()
+    message = {
+        "func": "file",
+        "cwd": cwd,
+        "cwdBody": dir2body(cwd),
+        "cwdEncoded": True,
+        "filename": filename,
+        "fileBody": content,
+        "fileCwd": cwd,
+        "fileOpen": True,
+        "fileEncoding": "",
+        "fileEncoded": False,
+    }
     send_as_pyclient(message)
 
 
@@ -941,30 +919,6 @@ def txt2body(content: str) -> str:
     """
     content = f"```\n{content}\n```"
     return md2body(content)
-
-
-# send message to smdv to load filename
-def update_filename():
-    """ open filename in smdv """
-    path = os.path.abspath(os.path.expanduser(ARGS.filename))
-    if path.startswith(ARGS.home):
-        path = path[len(ARGS.home):]
-    cwd, filename = change_current_working_directory(path)
-    with open(filename, "r") as file:
-        content = file.read()
-    message = {
-        "func": "file",
-        "cwd": cwd,
-        "cwdBody": dir2body(cwd),
-        "cwdEncoded": True,
-        "filename": filename,
-        "fileBody": content,
-        "fileCwd": cwd,
-        "fileOpen": True,
-        "fileEncoding": "",
-        "fileEncoded": False,
-    }
-    send_as_pyclient(message)
 
 
 def validate_message(message: str):
