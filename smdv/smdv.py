@@ -18,7 +18,6 @@
 # Imports
 
 # python standard library
-import io
 import os
 import re
 import sys
@@ -387,12 +386,6 @@ def encode(message: dict) -> dict:
     if encoding == "md":
         message["fileBody"] = md2body(message["fileBody"])
         return message
-    if encoding == "ipynb":
-        try:
-            message["fileBody"] = ipynb2body(message["fileBody"])
-            return message
-        except ImportError:
-            encoding = message["fileEncoding"] = "txt"
     if encoding == "txt":
         message["fileBody"] = txt2body(message["fileBody"])
         return message
@@ -433,41 +426,6 @@ def dir2body(cwd: str) -> str:
         for name, url in filelinks
     ]
     html = "<br>\n".join(dirhtml + filehtml)
-    return html
-
-
-# convert a jupyter notebook to html
-def ipynb2body(content: str) -> str:
-    """ convert jupyter notebook
-
-    TODO: make this work from stdin
-
-    Args:
-        content: the notebook contents to convert
-
-    Returns:
-        html: str: the html representation for the requested jupyter
-        notebook file.
-
-    Note:
-        this function requires nbconvert
-
-    """
-    from nbconvert.nbconvertapp import NbConvertApp
-    from nbconvert.exporters.html import HTMLExporter
-
-    # create an NbConvertApp:
-    app = NbConvertApp.instance()
-    # initialize the app with the arguments
-    app.initialize(["--template=basic"])
-    # create an exporter
-    app.exporter = HTMLExporter(config=app.config)
-    # get html output
-    html, _ = app.export_single_notebook(
-        notebook_filename=None,
-        resources=None,
-        input_buffer=io.StringIO(content)
-    )
     return html
 
 
