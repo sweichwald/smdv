@@ -738,14 +738,6 @@ def parse_args(args=None) -> argparse.Namespace:
         default=os.environ.get("SMDV_DEFAULT_RESTART", False),
         help="force a restart of smdv (both servers)",
     )
-    parser.add_argument(
-        "-t",
-        "--terminal",
-        default=os.environ.get(
-            "SMDV_DEFAULT_TERMINAL",
-            os.environ.get("TERMINAL", "")),
-        help="default terminal to spawn (uses $TERMINAL by default)",
-    )
     single_shot_arguments = parser.add_mutually_exclusive_group()
     single_shot_arguments.add_argument(
         "--server-status",
