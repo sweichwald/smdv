@@ -516,17 +516,12 @@ def main() -> int:
         if ARGS.restart:  # force restart
             kill_websocket_server()
             wait_for_server(server="websocket", status="stopped")
-        run_server_in_subprocess(server="websocket")
 
         # next, start smdv server.
         # Assume the server is already running on failure
         if ARGS.restart:  # force restart
             send_delete_request_to_server()
             wait_for_server(server="flask", status="stopped")
-        run_server_in_subprocess(server="flask")
-
-        # wait for the websocket server to be fully started:
-        wait_for_server(server="websocket", status="running")
 
         # if filename argument was given, sync filename or stdin to smdv
         if ARGS.filename:
