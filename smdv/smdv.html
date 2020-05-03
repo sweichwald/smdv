@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
-  <title>smdv {SMDV-interactive-SMDV} </title>
+  <title>smdv</title>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
@@ -241,7 +241,6 @@
         <span id="showFile"></span>
         <span id="fileLocation"></span>
         <span id="encodingType"></span>
-        <span id="editFile"></span>
     </div>
     &nbsp;
     <div style="float: right;">
@@ -297,7 +296,6 @@ var updateNavbar = function () {
     filenameTooltip = (message.filename == "live_pipe") ? "content piped into smdv" : (message.filename == "live_put") ? "content placed by PUT request": home + message.fileCwd + message.filename;
     showNavIf(fileLocation, message.filename, message.filename, filenameTooltip, tooltipClass = "tooltip-bottom", separator="");
     showNavIf(encodingType, (message.fileEncoding && message.fileOpen), "["+message.fileEncoding+"]", "file encoding", tooltipClass = "tooltip-bottom");
-    showNavIf(editFile, (message.fileOpen && message.filename != "live_pipe" && message.filename != "live_put"), "🖋", "edit", tooltipClass = "tooltip-bottom");
 }
 
 // body
@@ -475,9 +473,6 @@ showNavbar.onclick = hideNavbar.onclick = function() {
     window.onload();
 }
 encodingType.onclick = function() {
-}
-editFile.onclick = function() {
-    sendMessage({"func":"editFile"});
 }
 </script>
 

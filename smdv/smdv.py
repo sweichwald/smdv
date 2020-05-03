@@ -44,7 +44,6 @@ flask = limport('flask')
 # 3rd party CLI dependencies
 # fuser
 # pandoc
-# neovim-remote (to edit files with vim)
 
 # Globals
 ARGS = ""  # the smdv command line arguments
@@ -84,7 +83,6 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         message: the message to update the global message with
     """
     func = message.get("func")
-    ARGS.nvim_address = message.pop("nvimAddress", ARGS.nvim_address)
     validate_message(message)
     if "cwd" in message:
         os.chdir(ARGS.home + message["cwd"])
@@ -92,9 +90,6 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         return
     if func == "numJSClients":
         await client.send(str(len(JSCLIENTS)))
-        return
-    if func == "editFile":
-        edit_in_neovim(ARGS.home + MESSAGE["fileCwd"] + MESSAGE["filename"])
         return
     if func == "back":
         if len(BACKMESSAGES) < 2:
@@ -126,9 +121,6 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         encode(message)
     if func in {"dir", "file"}:
         MESSAGE.update(message)
-        if ARGS.interactive and MESSAGE["func"] == "file":
-            edit_in_neovim(
-                ARGS.home + MESSAGE["fileCwd"] + MESSAGE["filename"])
         await send_message_to_all_js_clients()
         return
 
@@ -316,8 +308,6 @@ def create_app():
             html = open(f'{BASE_DIR}/smdv.html', 'r').read()
             replacements = {
                 '{SMDV-home-SMDV}': ARGS.home,
-                '{SMDV-interactive-SMDV}':
-                    f"{'--interactive' if ARGS.interactive else ''}",
                 '{SMDV-css-SMDV}': open(ARGS.css, 'r').read(),
                 '{SMDV-host-SMDV}': ARGS.websocket_host,
                 '{SMDV-port-SMDV}': ARGS.websocket_port,
@@ -459,29 +449,6 @@ def dir2body(cwd: str) -> str:
     ]
     html = "<br>\n".join(dirhtml + filehtml)
     return html
-
-
-# open file in neovim
-def edit_in_neovim(filename: str = ""):
-    """ Open file in neovim using neovim-remote
-
-    Args:
-        filename: str="": the filename to open in neovim
-    """
-    path = os.path.abspath(os.path.expanduser(filename))
-    if not os.path.exists(path):
-        return
-    sock = ARGS.nvim_address.strip()
-    if ":" not in sock:  # unix socket
-        dirname = os.path.dirname(sock)
-        if not os.path.exists(dirname):
-            os.makedirs(dirname)
-    if socket_in_use(sock):
-        subprocess.Popen(
-            ["nvr", "-s", "--nostart", "--servername", sock, path])
-    else:
-        subprocess.Popen(
-            [ARGS.terminal, "-e", "nvr", "-s", "--servername", sock, path])
 
 
 # convert a jupyter notebook to html
@@ -838,20 +805,6 @@ def parse_args(args=None) -> argparse.Namespace:
         default=os.environ.get("SMDV_DEFAULT_NO_BROWSER", False),
         help="start the server without opening a browser.",
     )
-    parser.add_argument(
-        "-v",
-        "--nvim-address",
-        default=os.environ.get("SMDV_DEFAULT_NVIM_ADDRESS", "127.0.0.1:9878"),
-        help="address or socket to communicate with vim",
-    )
-    parser.add_argument(
-        "-i",
-        "--interactive",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_INTERACTIVE", False),
-        help=("open smdv in interactive mode (every file opened in "
-              "smdv will also automatically be opened in vim)."),
-    )
     single_shot_arguments = parser.add_mutually_exclusive_group()
     single_shot_arguments.add_argument(
         "--server-status",
@@ -979,12 +932,9 @@ def run_server_in_subprocess(server="flask"):
         "--host": ARGS.host,
         "--websocket-host": ARGS.websocket_host,
         "--css": ARGS.css,
-        "--nvim-address": ARGS.nvim_address,
     }
 
     args_list = [str(s) for kv in args.items() for s in kv]
-    if ARGS.interactive:
-        args_list += ["--interactive"]
     if server == "flask":
         args_list += ["--start-server"]
     elif server == "websocket":
@@ -1062,7 +1012,6 @@ def send_message_from_stdin():
     message["fileEncoding"] = message.get("fileEncoding", ARGS.stdin)
     message["fileEncoded"] = bool(message.get("fileEncoded", False))
     message["fileOpen"] = bool(message.get("fileOpen", True))
-    message["nvimAddress"] = ARGS.nvim_address
     send_as_pyclient(message)
 
 
@@ -1123,7 +1072,6 @@ def update_filename():
         "fileOpen": True,
         "fileEncoding": "",
         "fileEncoded": False,
-        "NvimAddress": ARGS.nvim_address,
     }
     send_as_pyclient(message)
 
