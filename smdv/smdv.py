@@ -577,7 +577,7 @@ def main() -> int:
     """
     global ARGS
     try:
-        ARGS = parse_args(sys.argv[1:])
+        ARGS = parse_args()
 
         # first do single-shot smdv flags:
         if ARGS.start_server:
@@ -667,6 +667,8 @@ def json2html(inputstr):
 
 
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
+
+
 def md2body(content: str = "") -> str:
     """ convert markdown to html using pandoc markdown
 
@@ -707,7 +709,9 @@ def md2body(content: str = "") -> str:
             jsontext = jsontext.replace(markertag, '')
         html += "\n" + json2html(jsontext)
 
-        html = urlRegex.sub(f'\\1="http://{ARGS.host}:{ARGS.port}/@static{cwd}\\2"', html)
+        html = urlRegex.sub(
+            f'\\1="http://{ARGS.host}:{ARGS.port}/@static{cwd}\\2"',
+            html)
 
         htmlblocks.append([hash(html), html])
 
@@ -733,7 +737,7 @@ def open_browser():
 
 
 # parse command line arguments
-def parse_args(args: tuple) -> argparse.Namespace:
+def parse_args(args=None) -> argparse.Namespace:
     """ populate the smdv command line arguments
 
     Args:
