@@ -545,33 +545,6 @@ def send_as_pyclient(message: dict):
         pass  # allows messages to be lost when sending many messages at once.
 
 
-# send message to smdv to load filename or live_pipe
-def update_filename():
-    """ open filename in smdv """
-    path = ARGS.filename.name
-    if path == '<stdin>':
-        cwd = os.path.abspath(
-            os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
-        filename = 'live_pipe'
-    elif path.startswith(ARGS.home):
-        path = path[len(ARGS.home):]
-        cwd, filename = change_current_working_directory(path)
-    content = ARGS.filename.read()
-    message = {
-        "func": "file",
-        "cwd": cwd,
-        "cwdBody": dir2body(cwd),
-        "cwdEncoded": True,
-        "filename": filename,
-        "fileBody": content,
-        "fileCwd": cwd,
-        "fileOpen": True,
-        "fileEncoding": "",
-        "fileEncoded": False,
-    }
-    send_as_pyclient(message)
-
-
 # check if a socket is in use
 def socket_in_use(address: str) -> bool:
     """ check if a socket is in use
@@ -893,8 +866,19 @@ def main():
 
         # if filename argument was given, sync filename or stdin to smdv
         if ARGS.filename:
-            update_filename()
-            return 0
+            connection = httpclient.HTTPConnection(ARGS.host,
+                                                   ARGS.port)
+            path = ARGS.filename.name
+            if path.startswith(ARGS.home):
+                path = path[len(ARGS.home):]
+                if not path.endswith('/'):
+                    path += '/'
+                connection = httpclient.HTTPConnection(ARGS.host,
+                                                       ARGS.port)
+                connection.request("GET", path)
+            elif path == '<stdin>':
+                connection.request("PUT", "/", ARGS.filename.read())
+            return connection.getresponse().code != 200
 
         # only happens when no arguments are supplied,
         # nor anything was piped into smdv:
