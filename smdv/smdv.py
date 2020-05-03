@@ -824,12 +824,6 @@ def parse_args(args=None) -> argparse.Namespace:
         help="force a restart of smdv (both servers)",
     )
     parser.add_argument(
-        "--hide-navbar",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_HIDE_NAVBAR", False),
-        help="don't show the smdv navbar by default",
-    )
-    parser.add_argument(
         "-t",
         "--terminal",
         default=os.environ.get(
@@ -913,8 +907,6 @@ def parse_args(args=None) -> argparse.Namespace:
     if not os.path.isdir(parsed_args.home):
         raise ValueError(
             f"invalid home location given from smdv: {parsed_args.home}")
-    if parsed_args.hide_navbar:
-        raise ValueError(f"hiding the navbar is not yet supported")
     return parsed_args
 
 
