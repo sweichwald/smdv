@@ -764,6 +764,7 @@ def parse_args(args: tuple) -> argparse.Namespace:
         nargs="?",
         default=os.environ.get("SMDV_DEFAULT_STDIN", "md"),
         choices=["md", "html", "txt"],
+        const="md",
         help=(
             "read content for smdv from stdin. Takes optional encoding types:"
             "    md (default), html"
@@ -903,8 +904,6 @@ def parse_args(args: tuple) -> argparse.Namespace:
         help="start smdv (both servers)",
     )
     parsed_args = parser.parse_args(args=args)
-    if parsed_args.stdin is None:
-        parsed_args.stdin = "md"
     if parsed_args.home.endswith("/"):
         parsed_args.home = parsed_args.home[:-1]
     if not os.path.isdir(parsed_args.home):
