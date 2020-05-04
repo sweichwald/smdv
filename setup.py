@@ -26,7 +26,7 @@ if __name__ == "__main__":
         license="GPLv3",
         entry_points={"console_scripts": [
             "smdv = smdv.smdv:main",
-            "smdv-flask = smdv.flask:run_flask_server",
+            "smdv-quart = smdv.quart:run_quart_server",
             "smdv-websocket = smdv.smdv:run_websocket_server"]},
         python_requires=">=3.6",
         install_requires=install_requires,

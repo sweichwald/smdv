@@ -1,64 +1,46 @@
-import asyncio
 import json
 import os
 
 from .utils import limport, parse_args, BASE_DIR
 
-# import flask and websockets lazily
-flask = limport('flask')
+# import quart and websockets lazily
+quart = limport('quart')
 websockets = limport('websockets')
 
-EVENT_LOOP = asyncio.get_event_loop()
 
-
-def run_flask_server():
+def run_quart_server():
     global ARGS
     ARGS = parse_args()
-    """ start the flask server """
+    """ start the quart server """
     create_app().run(
-        debug=False, port=ARGS.port, host=ARGS.host, threaded=True)
+        debug=False, port=ARGS.port, host=ARGS.host)
 
 
 def create_app():
-    """ flask app factory
+    """ quart app factory
 
     Returns:
-        app: the flask app
+        app: the quart app
 
     """
 
-    app = flask.Flask(
+    app = quart.Quart(
         __name__, static_folder=ARGS.home, static_url_path="/@static")
-
-    # stop the flask server
-    def stop_flask_server() -> int:
-        """ stop the flask server
-
-        Returns:
-            exit_status: exit status of the request (0: success, 1: failure)
-
-        """
-        func = flask.request.environ.get("werkzeug.server.shutdown")
-        try:
-            func()
-            return 0
-        except Exception:
-            return 1
 
     # index route for the smdv app
     @app.route("/", methods=["GET", "PUT", "DELETE"])
     @app.route("/<path:path>/", methods=["GET"])
-    def index(path: str = "") -> str:
+    async def index(path: str = "") -> str:
         """ the main (index) route of smdv
 
         Returns:
             html: the html representation of the requested path
         """
-        if flask.request.method == "GET":
+        if quart.request.method == "GET":
             try:
                 cwd, filename = change_current_working_directory(path)
             except FileNotFoundError:
-                return flask.abort(404)
+                return quart.abort(404)
 
             html = open(f'{BASE_DIR}/smdv.html', 'r').read()
             replacements = {
@@ -72,10 +54,10 @@ def create_app():
 
             if filename:
                 if is_binary_file(filename):
-                    return flask.redirect(
-                        flask.url_for("static", filename=path))
+                    return quart.redirect(
+                        quart.url_for("static", filename=path))
                 with open(filename, "r") as file:
-                    send_as_pyclient(
+                    await send_as_pyclient_async(
                         {
                             "func": "file",
                             "cwd": cwd,
@@ -91,7 +73,7 @@ def create_app():
                     )
                     return html
             # this only happens if requested path is a directory
-            send_as_pyclient(
+            await send_as_pyclient_async(
                 {
                     "func": "dir",
                     "cwd": cwd,
@@ -107,19 +89,20 @@ def create_app():
             )
             return html
 
-        if flask.request.method == "PUT":
+        if quart.request.method == "PUT":
             cwd = (
                 os.path.abspath(
                     os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
             )
-            send_as_pyclient(
+            reqdata = await quart.request.data
+            await send_as_pyclient_async(
                 {
                     "func": "file",
                     "cwd": cwd,
                     "cwdEncoded": False,
                     "cwdBody": "",
                     "filename": "live_put",
-                    "fileBody": flask.request.data.decode(),
+                    "fileBody": reqdata.decode(),
                     "fileCwd": cwd,
                     "fileOpen": True,
                     "fileEncoding": "md",
@@ -128,26 +111,14 @@ def create_app():
             )
             return ""
 
-        if flask.request.method == "DELETE":
-            exit_status = stop_flask_server()
-            return "failed.\n" if exit_status else "success.\n"
+        if quart.request.method == "DELETE":
+            # TODO
+            exit()
 
         # should never get here:
         return "failed.\n"
 
     return app
-
-
-def send_as_pyclient(message: dict):
-    """ send a message to the websocket server as the python client
-
-    Args:
-        message: the message to send (in dictionary format)
-    """
-    try:
-        EVENT_LOOP.run_until_complete(send_as_pyclient_async(message))
-    except RuntimeError:
-        pass  # allows messages to be lost when sending many messages at once.
 
 
 async def send_as_pyclient_async(message: dict):

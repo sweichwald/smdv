@@ -401,11 +401,11 @@ def run_websocket_server():
 
 
 # run server in new subprocess
-def run_server_in_subprocess(server="flask"):
+def run_server_in_subprocess(server="quart"):
     """ start the websocket server in a subprocess
 
     Args:
-        server: which server to run in subprocess ["flask", "websocket"]
+        server: which server to run in subprocess ["quart", "websocket"]
     """
     args = {
         "--home": ARGS.home,
@@ -419,7 +419,7 @@ def run_server_in_subprocess(server="flask"):
     subprocess.Popen([f"smdv-{server}"] + args_list)
 
 
-def stop_flask_server():
+def stop_quart_server():
     """ stop the smdv server by sending a DELETE request
 
     Returns:
@@ -453,16 +453,16 @@ def stop_websocket_server():
 
 
 # get status for the smdv server
-def request_server_status(server: str = "flask") -> str:
+def request_server_status(server: str = "quart") -> str:
     """ request the smdv server status
 
     Args:
-        server: the server to ask the status for ["flask", "websocket"]
+        server: the server to ask the status for ["quart", "websocket"]
 
     Returns:
         status: str: the smdv server status
     """
-    if server == "flask":
+    if server == "quart":
         connection = httpclient.HTTPConnection(ARGS.host,
                                                ARGS.port)
     elif server == "websocket":
@@ -471,7 +471,7 @@ def request_server_status(server: str = "flask") -> str:
     else:
         raise ValueError(
             "request_server_status expects a server value of "
-            "'flask' or 'server'"
+            "'quart' or 'server'"
         )
     try:
         connection.connect()
@@ -495,12 +495,12 @@ def main():
 
         # first do single-shot smdv flags:
         if ARGS.start_server:
-            run_server_in_subprocess(server="flask")
+            run_server_in_subprocess(server="quart")
             return 0
         if ARGS.stop_server:
-            return stop_flask_server()
+            return stop_quart_server()
         if ARGS.server_status:
-            print(request_server_status(server="flask"))
+            print(request_server_status(server="quart"))
             return 0
 
         if ARGS.start_websocket_server:
@@ -513,11 +513,11 @@ def main():
             return 0
 
         if ARGS.start:
-            run_server_in_subprocess(server="flask")
+            run_server_in_subprocess(server="quart")
             run_server_in_subprocess(server="websocket")
             return 0
         if ARGS.stop:
-            exit_status1 = stop_flask_server()
+            exit_status1 = stop_quart_server()
             exit_status2 = stop_websocket_server()
             return exit_status1 + exit_status2
 
