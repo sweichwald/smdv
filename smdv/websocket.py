@@ -1,13 +1,16 @@
 import asyncio
+from async_lru import alru_cache
 import collections
-from functools import lru_cache
 import json
 import os
 import re
-import subprocess
 import websockets
 
 from .utils import parse_args
+
+
+N_JOBS_PANDOC = 10
+SEM = asyncio.Semaphore(N_JOBS_PANDOC)
 
 
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
@@ -86,7 +89,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         message: the message to update the global message with
     """
     func = message.get("func")
-    validate_message(message)
+    await validate_message(message)
     if "cwd" in message:
         os.chdir(ARGS.home + message["cwd"])
     if not func:
@@ -115,17 +118,17 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
             message["fileEncoding"] = MESSAGE["fileEncoding"]
             message["fileEncoded"] = MESSAGE["fileEncoded"]
         if not message["cwdEncoded"]:
-            message["cwdBody"] = dir2body(message["cwd"])
+            message["cwdBody"] = await dir2body(message["cwd"])
             message["cwdEncoded"] = True
     if func == "file":
-        encode(message)
+        await encode(message)
     if func in {"dir", "file"}:
         MESSAGE.update(message)
         await send_message_to_all_js_clients()
         return
 
 
-def validate_message(message: str):
+async def validate_message(message: str):
     """ check if the message is a valid websocket message """
     if message.get("client", "func") in {"dir", "file"}:
         keys = {
@@ -147,7 +150,7 @@ def validate_message(message: str):
 
 
 # encode a message in the given encoding format
-def encode(message: dict) -> dict:
+async def encode(message: dict) -> dict:
     """ encode the body of a message. """
     if message.get("fileEncoded", False):
         return message  # don't encode again if the message is already encoded
@@ -163,17 +166,17 @@ def encode(message: dict) -> dict:
                 encoding = "md"
         message["fileEncoding"] = encoding
     if encoding == "md":
-        message["fileBody"] = md2body(message["fileBody"])
+        message["fileBody"] = await md2body(message["fileBody"])
         return message
     if encoding == "txt":
-        message["fileBody"] = txt2body(message["fileBody"])
+        message["fileBody"] = await txt2body(message["fileBody"])
         return message
     if message["fileEncoding"] == "html":
         return message
 
     message["fileEncoding"] = "txt"
     message["fileEncoded"] = False
-    return encode(message)
+    return await encode(message)
 
 
 # send updated body contents to javascript clients
@@ -208,7 +211,7 @@ async def send_message_to_all_js_clients():
 
 
 # convert a directory path to a markdown representation of the directory view
-def dir2body(cwd: str) -> str:
+async def dir2body(cwd: str) -> str:
     """ convert a directory path to a markdown representation of the directory view
 
     Args:
@@ -240,28 +243,52 @@ def dir2body(cwd: str) -> str:
 
 
 # convert text file to html
-def txt2body(content: str) -> str:
+async def txt2body(content: str) -> str:
     """ Convert text content to html
 
     Args:
         content: the content to encode as html
     """
     content = f"```\n{content}\n```"
-    return md2body(content)
+    return await md2body(content)
 
 
-@lru_cache(maxsize=10000)
-def json2html(inputstr):
-    return subprocess.run(
-        ["pandoc", "--from", "json", "--to", "html5", "--mathml"],
-        stdout=subprocess.PIPE,
-        input=inputstr.encode()).stdout.decode()
+async def md2json(content):
+    proc = await asyncio.create_subprocess_shell(
+        "pandoc --from markdown+emoji --to json --mathml",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
+    stdout, stderr = await proc.communicate(content.encode())
+    return json.loads(stdout)
+
+
+async def json2html(jsontxt):
+    proc = await asyncio.create_subprocess_shell(
+        "pandoc --from json --to html5 --mathml",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
+    stdout, stderr = await proc.communicate(jsontxt.encode())
+    return stdout.decode()
+
+
+@alru_cache(maxsize=1000)
+async def json2html_safe(jsontxt):
+    async with SEM:
+        return await json2html(jsontxt)
+
+
+async def jsonlist2html(jsontxts):
+    return await asyncio.gather(*(
+        asyncio.ensure_future(json2html_safe(block))
+        for block in jsontxts))
 
 
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
-def md2body(content: str = "") -> str:
+async def md2body(content: str = "") -> str:
     """ convert markdown to html using pandoc markdown
 
     Args:
@@ -282,29 +309,30 @@ def md2body(content: str = "") -> str:
     else:
         cwd = os.path.abspath(os.getcwd()).replace(ARGS.home, "") + "/"
 
-    jsonout = json.loads(subprocess.run(
-        ["pandoc", "--from", "markdown+emoji", "--to", "json", "--mathml"],
-        stdout=subprocess.PIPE,
-        input=content.encode()).stdout)
+    jsonout = await md2json(content)
     blocks = jsonout['blocks']
 
-    htmlblocks = []
-
-    markertag = '<a name=\\"#marker\\" id=\\"marker\\"></a>'
     marker = '<a name="#marker" id="marker"></a>'
-    for b in blocks:
-        jsonout['blocks'] = [b]
-        jsontext = json.dumps(jsonout)
-        html = "\n"
-        if jsontext.find(markertag) >= 0:
-            html += marker + '\n'
-            jsontext = jsontext.replace(markertag, '')
-        html += "\n" + json2html(jsontext)
+    markertag = '<a name=\\"#marker\\" id=\\"marker\\"></a>'
+    markerpos = None
 
-        html = urlRegex.sub(
+    jsonlist = []
+    for bid, b in enumerate(blocks):
+        jsonout['blocks'] = [b]
+        jsonstr = json.dumps(jsonout)
+        if jsonstr.find(markertag) >= 0:
+            jsonstr = jsonstr.replace(markertag, '')
+            markerpos = bid
+        jsonlist.append(jsonstr)
+
+    htmls = [
+        urlRegex.sub(
             f'\\1="http://{ARGS.host}:{ARGS.port}/@static{cwd}\\2"',
             html)
+        for html in await jsonlist2html(jsonlist)]
 
-        htmlblocks.append([hash(html), html])
+    htmlblocks = [[hash(html), html] for html in htmls]
+    if markerpos:
+        htmlblocks.insert(markerpos, [hash(marker), marker])
 
     return htmlblocks
