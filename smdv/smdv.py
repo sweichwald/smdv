@@ -24,7 +24,6 @@ import sys
 import json
 import socket
 import asyncio
-import argparse
 import subprocess
 import collections
 from functools import lru_cache
@@ -32,9 +31,9 @@ from functools import lru_cache
 # 3rd party dependencies
 import websockets
 
-# import flask and http.client lazily
-from .utils import limport
-flask = limport('flask')
+from .utils import limport, parse_args
+
+# import http.client lazily
 httpclient = limport('http.client')
 
 # 3rd party CLI dependencies
@@ -51,10 +50,6 @@ FORWARDMESSAGES = collections.deque()  # for communication between js and py
 EVENT_LOOP = asyncio.get_event_loop()
 
 MESSAGE = {}
-
-# Templates
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 # Async functions (alphabetic)
 
@@ -134,20 +129,6 @@ async def register_client(client: websockets.WebSocketServerProtocol):
     await handle_message(client, message)
 
 
-# python websocket client
-async def send_as_pyclient_async(message: dict):
-    """ send a message to the smdv server as the python client
-
-    Args:
-        message: the message to send (in dictionary format)
-    """
-    message["client"] = "py"
-    async with websockets.connect(
-        f"ws://{ARGS.websocket_host}:{ARGS.websocket_port}"
-    ) as websocket:
-        await websocket.send(json.dumps(message))
-
-
 # serve clients
 async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
     """ asynchronous websocket server to serve a websocket client
@@ -210,161 +191,6 @@ async def unregister_client(client: websockets.WebSocketServerProtocol):
         PYCLIENTS.remove(client)
 
 
-# Normal functions (alphabetic)
-
-# function to change the current working directory
-def change_current_working_directory(path: str) -> str:
-    """ change the current working directory
-
-    Args:
-        path: filename or directory name. If a filename is given,
-            the current directory will be changed to the containing
-            folder
-    """
-    i = 1 if (path and path[0] == "/") else 0
-    fullpath = os.path.join(ARGS.home, path[i:])
-    filename = ""
-    dirpath = fullpath
-    if not os.path.isdir(fullpath):
-        filename = os.path.basename(fullpath)
-        dirpath = os.path.dirname(fullpath)
-    if dirpath.endswith("/"):
-        dirpath = dirpath[:-1]
-    cwd = os.path.abspath(os.getcwd())
-    if cwd.endswith("/"):
-        cwd = cwd[:-1]
-    if not os.path.isdir(dirpath):
-        raise FileNotFoundError(f"Could not find directory {dirpath}")
-    if (not os.path.exists(fullpath)
-            and filename not in ["live_pipe", "live_put"]):
-        raise FileNotFoundError(f"Could not find file {fullpath}")
-    if cwd != dirpath:
-        os.chdir(dirpath)
-    cwd = os.path.abspath(os.getcwd()) + "/"
-    cwd = cwd[len(ARGS.home):]
-    return cwd, filename
-
-
-# flask app factory
-def create_app():
-    """ flask app factory
-
-    Returns:
-        app: the flask app
-
-    """
-
-    app = flask.Flask(
-        __name__, static_folder=ARGS.home, static_url_path="/@static")
-
-    # stop the flask server
-    def stop_flask_server() -> int:
-        """ stop the flask server
-
-        Returns:
-            exit_status: exit status of the request (0: success, 1: failure)
-
-        """
-        func = flask.request.environ.get("werkzeug.server.shutdown")
-        try:
-            func()
-            return 0
-        except Exception:
-            return 1
-
-    # index route for the smdv app
-    @app.route("/", methods=["GET", "PUT", "DELETE"])
-    @app.route("/<path:path>/", methods=["GET"])
-    def index(path: str = "") -> str:
-        """ the main (index) route of smdv
-
-        Returns:
-            html: the html representation of the requested path
-        """
-        if flask.request.method == "GET":
-            try:
-                cwd, filename = change_current_working_directory(path)
-            except FileNotFoundError:
-                return flask.abort(404)
-
-            html = open(f'{BASE_DIR}/smdv.html', 'r').read()
-            replacements = {
-                '{SMDV-home-SMDV}': ARGS.home,
-                '{SMDV-css-SMDV}': open(ARGS.css, 'r').read(),
-                '{SMDV-host-SMDV}': ARGS.websocket_host,
-                '{SMDV-port-SMDV}': ARGS.websocket_port,
-            }
-            for k, v in replacements.items():
-                html = html.replace(k, v)
-
-            if filename:
-                if is_binary_file(filename):
-                    return flask.redirect(
-                        flask.url_for("static", filename=path))
-                with open(filename, "r") as file:
-                    send_as_pyclient(
-                        {
-                            "func": "file",
-                            "cwd": cwd,
-                            "cwdBody": dir2body(cwd),
-                            "cwdEncoded": True,
-                            "filename": filename,
-                            "fileBody": file.read(),
-                            "fileCwd": cwd,
-                            "fileOpen": True,
-                            "fileEncoding": "",
-                            "fileEncoded": False,
-                        }
-                    )
-                    return html
-            # this only happens if requested path is a directory
-            send_as_pyclient(
-                {
-                    "func": "dir",
-                    "cwd": cwd,
-                    "cwdBody": dir2body(cwd),
-                    "cwdEncoded": True,
-                    "filename": filename,
-                    "fileBody": "",
-                    "fileCwd": cwd,
-                    "fileOpen": False,
-                    "fileEncoding": "",
-                    "fileEncoded": False,
-                }
-            )
-            return html
-
-        if flask.request.method == "PUT":
-            cwd = (
-                os.path.abspath(
-                    os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
-            )
-            send_as_pyclient(
-                {
-                    "func": "file",
-                    "cwd": cwd,
-                    "cwdBody": dir2body(cwd),
-                    "cwdEncoded": True,
-                    "filename": "live_put",
-                    "fileBody": flask.request.data.decode(),
-                    "fileCwd": cwd,
-                    "fileOpen": True,
-                    "fileEncoding": "md",
-                    "fileEncoded": False,
-                }
-            )
-            return ""
-
-        if flask.request.method == "DELETE":
-            exit_status = stop_flask_server()
-            return "failed.\n" if exit_status else "success.\n"
-
-        # should never get here:
-        return "failed.\n"
-
-    return app
-
-
 # encode a string in the given encoding format
 def encode(message: dict) -> dict:
     """ encode the body of a message. """
@@ -425,35 +251,6 @@ def dir2body(cwd: str) -> str:
     ]
     html = "<br>\n".join(dirhtml + filehtml)
     return html
-
-
-# check if a file is a binary
-def is_binary_file(filename: str) -> bool:
-    """ check if a file can be considered a binary file
-
-    Args:
-        filename: str: the filename of the file to check
-
-    Returns:
-        is_binary_string: bool: the truth value indicating wether the file is
-            binary or not.
-    """
-    textchars = (
-        bytearray([7, 8, 9, 10, 12, 13, 27])
-        + bytearray(range(0x20, 0x7F))
-        + bytearray(range(0x80, 0x100))
-    )
-
-    def is_binary_string(inbytes):
-        return bool(inbytes.translate(None, textchars))
-
-    if not os.path.exists(filename):
-        return False
-
-    if is_binary_string(open(filename, "rb").read(1024)):
-        return True
-    else:
-        return False
 
 
 @lru_cache(maxsize=10000)
@@ -532,19 +329,6 @@ def print_message(message: dict, **kwargs):
             print(f"{'    '*indent}{k}\t{repr(v)}")
 
 
-# send a message to the websocket server at the python client
-def send_as_pyclient(message: dict):
-    """ send a message to the websocket server as the python client
-
-    Args:
-        message: the message to send (in dictionary format)
-    """
-    try:
-        EVENT_LOOP.run_until_complete(send_as_pyclient_async(message))
-    except RuntimeError:
-        pass  # allows messages to be lost when sending many messages at once.
-
-
 # check if a socket is in use
 def socket_in_use(address: str) -> bool:
     """ check if a socket is in use
@@ -601,15 +385,6 @@ def validate_message(message: str):
         for key in keys:
             assert key in message, f"message {message} has no key '{key}'"
             assert key in keys, f"{key} is not a valid message key"
-
-
-# run the flask server
-def run_flask_server():
-    global ARGS
-    ARGS = parse_args()
-    """ start the flask server """
-    create_app().run(
-        debug=False, port=ARGS.port, host=ARGS.host, threaded=True)
 
 
 # websocket server
@@ -706,124 +481,6 @@ def request_server_status(server: str = "flask") -> str:
     finally:
         connection.close()
     return server_status
-
-
-def parse_args(args=None) -> argparse.Namespace:
-    """ populate the smdv command line arguments
-
-    Args:
-        args: the arguments to parse
-
-    Returns:
-        parsed_args: the parsed arguments
-
-    """
-    # Argument parser
-    parser = argparse.ArgumentParser(
-        description="smdv: a Simple MarkDown Viewer")
-    parser.add_argument(
-        "filename",
-        type=argparse.FileType('r'),
-        nargs="?",
-        default=(None if sys.stdin.isatty() else sys.stdin),
-        help="path or file to open with smdv",
-    )
-    parser.add_argument(
-        "-H",
-        "--home",
-        default=os.environ.get("SMDV_DEFAULT_HOME", os.path.expanduser("~")),
-        help="set the root folder of the smdv server",
-    )
-    parser.add_argument(
-        "-p",
-        "--port",
-        default=os.environ.get("SMDV_DEFAULT_PORT", "9876"),
-        help="port on which smdv is served.",
-    )
-    parser.add_argument(
-        "-w",
-        "--websocket-port",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_PORT", "9877"),
-        help="port for websocket communication",
-    )
-    parser.add_argument(
-        "--host",
-        default=os.environ.get("SMDV_DEFAULT_HOST", "localhost"),
-        help=("host on which smdv is served "
-              "(for now, only localhost is supported)"),
-        choices=["localhost", "127.0.0.1"],
-    )
-    parser.add_argument(
-        "--websocket-host",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_HOST", "localhost"),
-        help=("host for websocket communication "
-              "(for now, only localhost is supported)"),
-        choices=["localhost", "127.0.0.1"],
-    )
-    parser.add_argument(
-        "--css",
-        default=os.environ.get(
-            "SMDV_DEFAULT_CSS",
-            f"{BASE_DIR}/smdv.css",
-        ),
-        help="location of a local markdown css file",
-    )
-    single_shot_arguments = parser.add_mutually_exclusive_group()
-    single_shot_arguments.add_argument(
-        "--server-status",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_SERVER_STATUS", False),
-        help="ask status of the smdv server",
-    )
-    single_shot_arguments.add_argument(
-        "--websocket-server-status",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_SERVER_STATUS", False),
-        help="ask status of the smdv server",
-    )
-    single_shot_arguments.add_argument(
-        "--start-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START_SERVER", False),
-        help="start the smdv server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP_SERVER", False),
-        help="stop the smdv server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--start-websocket-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START_WEBSOCKET_SERVER", False),
-        help="start the smdv websocket server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop-websocket-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP_WEBSOCKET_SERVER", False),
-        help="stop the smdv websocket server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP", False),
-        help="stop smdv running in the background (kills both servers)",
-    )
-    single_shot_arguments.add_argument(
-        "--start",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START", False),
-        help="start smdv (both servers)",
-    )
-    parsed_args = parser.parse_args(args=args)
-    if parsed_args.home.endswith("/"):
-        parsed_args.home = parsed_args.home[:-1]
-    if not os.path.isdir(parsed_args.home):
-        raise ValueError(
-            f"invalid home location given from smdv: {parsed_args.home}")
-    return parsed_args
 
 
 def main():
