@@ -11,7 +11,6 @@ from .utils import parse_args
 
 
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
-PYCLIENTS = set()  # pyclients update the html body of the jsclient
 BACKMESSAGES = collections.deque()  # for communication between js and py
 FORWARDMESSAGES = collections.deque()  # for communication between js and py
 MESSAGE = {}
@@ -65,10 +64,6 @@ async def register_client(client: websockets.WebSocketServerProtocol):
     if clienttype == "js":
         JSCLIENTS.add(client)
         await client.send(json.dumps(MESSAGE))
-    elif clienttype == "py":
-        PYCLIENTS.add(client)
-    else:
-        raise ValueError("not a valid client identifier specified.")
     await handle_message(client, message)
 
 
@@ -81,8 +76,6 @@ async def unregister_client(client: websockets.WebSocketServerProtocol):
     """
     if client in JSCLIENTS:
         JSCLIENTS.remove(client)
-    if client in PYCLIENTS:
-        PYCLIENTS.remove(client)
 
 
 async def handle_message(client: websockets.WebSocketServerProtocol,
