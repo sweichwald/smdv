@@ -214,7 +214,7 @@ def change_current_working_directory(path: str) -> str:
     if not os.path.isdir(dirpath):
         raise FileNotFoundError(f"Could not find directory {dirpath}")
     if (not os.path.exists(fullpath)
-            and filename not in ["live_pipe", "live_put"]):
+            and filename not in ["live_put"]):
         raise FileNotFoundError(f"Could not find file {fullpath}")
     if cwd != dirpath:
         os.chdir(dirpath)

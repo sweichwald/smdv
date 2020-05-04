@@ -8,10 +8,11 @@ Some changes compared to the original:
 
 * use [Pandoc's Markdown][pandocmarkdown] flavour (+emoji), which is more suitable for academic writing
 * flake8/pep8 compliance
-* change `@pipe`/`@put` to `live_pipe`/`live_put` for less special URIs
+* drop `@pipe`; change `@put` to `live_put` for less special URIs
 * separate the html template and css from the python file, strip smdv specific css (other than that for the navbar) and replace it by the default pandoc css
-* implement a hacky rudimentary lru_cache-based speed-up
+* implement a (for now hacky and rudimentary) lru_cache-based speed-up
 * renders dot-parse code blocks using viz.js
+* javascript updates only changed blocks instead of re-setting the entire innerhtml
 * hack to allow [vim-instant-markdown][vim] to pass along the path of the currently edited file to enable relative include of images
 * [killercup's css](https://gist.github.com/killercup/5917178)
 * [gruvbox style](https://www.jonashietala.se/blog/2015/08/04/gruvbox_syntax_highlighting_for_pandoc/) syntax highlighting

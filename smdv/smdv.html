@@ -293,7 +293,7 @@ var updateNavbar = function () {
     showNavIf(currentDirectory, true, "📁", "folder view", tooltipClass = "tooltip-right");
     showNavIf(directoryLocation, true, message.cwd, home+message.cwd, tooltipClass = "tooltip-bottom", separator="");
     showNavIf(showFile, message.filename, "📄", "file view", tooltipClass = "tooltip-bottom");
-    filenameTooltip = (message.filename == "live_pipe") ? "content piped into smdv" : (message.filename == "live_put") ? "content placed by PUT request": home + message.fileCwd + message.filename;
+    filenameTooltip = (message.filename == "live_put") ? "content placed by PUT request": home + message.fileCwd + message.filename;
     showNavIf(fileLocation, message.filename, message.filename, filenameTooltip, tooltipClass = "tooltip-bottom", separator="");
     showNavIf(encodingType, (message.fileEncoding && message.fileOpen), "["+message.fileEncoding+"]", "file encoding", tooltipClass = "tooltip-bottom");
 }
