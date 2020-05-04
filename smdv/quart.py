@@ -8,6 +8,9 @@ quart = limport('quart')
 websockets = limport('websockets')
 
 
+LASTPUT = {}
+
+
 def run_quart_server():
     global ARGS
     ARGS = parse_args()
@@ -23,7 +26,6 @@ def create_app():
         app: the quart app
 
     """
-
     app = quart.Quart(
         __name__, static_folder=ARGS.home, static_url_path="/@static")
 
@@ -36,6 +38,8 @@ def create_app():
         Returns:
             html: the html representation of the requested path
         """
+        global LASTPUT
+
         if quart.request.method == "GET":
             try:
                 cwd, filename = change_current_working_directory(path)
@@ -51,6 +55,10 @@ def create_app():
             }
             for k, v in replacements.items():
                 html = html.replace(k, v)
+
+            if path.endswith("live_put") or path.endswith("live_put/"):
+                await send_as_pyclient_async(LASTPUT)
+                return html
 
             if filename:
                 if is_binary_file(filename):
@@ -95,20 +103,19 @@ def create_app():
                     os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
             )
             reqdata = await quart.request.data
-            await send_as_pyclient_async(
-                {
-                    "func": "file",
-                    "cwd": cwd,
-                    "cwdEncoded": False,
-                    "cwdBody": "",
-                    "filename": "live_put",
-                    "fileBody": reqdata.decode(),
-                    "fileCwd": cwd,
-                    "fileOpen": True,
-                    "fileEncoding": "md",
-                    "fileEncoded": False,
+            LASTPUT = {
+                "func": "file",
+                "cwd": cwd,
+                "cwdEncoded": False,
+                "cwdBody": "",
+                "filename": "live_put",
+                "fileBody": reqdata.decode(),
+                "fileCwd": cwd,
+                "fileOpen": True,
+                "fileEncoding": "md",
+                "fileEncoded": False,
                 }
-            )
+            await send_as_pyclient_async(LASTPUT)
             return ""
 
         if quart.request.method == "DELETE":
