@@ -27,7 +27,7 @@ if __name__ == "__main__":
         entry_points={"console_scripts": [
             "smdv = smdv.smdv:main",
             "smdv-quart = smdv.quart:run_quart_server",
-            "smdv-websocket = smdv.smdv:run_websocket_server"]},
+            "smdv-websocket = smdv.websocket:run_websocket_server"]},
         python_requires=">=3.6",
         install_requires=install_requires,
         classifiers=[
