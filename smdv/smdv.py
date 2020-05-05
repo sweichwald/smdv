@@ -47,6 +47,7 @@ def run_server_in_subprocess(server="quart"):
         "--port": ARGS.port,
         "--websocket-port": ARGS.websocket_port,
         "--css": ARGS.css,
+        "--math": ARGS.math
     }
     args_list = [str(s) for kv in args.items() for s in kv]
     subprocess.Popen([f"smdv-{server}"] + args_list)

@@ -64,6 +64,12 @@ def parse_args(args=None) -> argparse.Namespace:
         ),
         help="location of a local markdown css file",
     )
+    parser.add_argument(
+        "--math",
+        default="mathml",
+        choices=["mathml", "katex"],
+        help="whether to use pandoc's mathml or katex math mode",
+    )
     single_shot_arguments = parser.add_mutually_exclusive_group()
     single_shot_arguments.add_argument(
         "--server-status",
