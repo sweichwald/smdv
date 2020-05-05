@@ -18,7 +18,7 @@ BACKMESSAGES = collections.deque()  # for communication between js and py
 FORWARDMESSAGES = collections.deque()  # for communication between js and py
 MESSAGE = {}
 EVENT_LOOP = asyncio.get_event_loop()
-NAMED_PIPE = "/tmp/smdv_pipe"
+NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
 
 
 def run_websocket_server():
@@ -30,12 +30,12 @@ def run_websocket_server():
                                          ARGS.websocket_port)
     EVENT_LOOP.run_until_complete(asyncio.gather(
         WEBSOCKETS_SERVER,
-        asyncio.start_unix_server(streamer, NAMED_PIPE)
+        asyncio.start_unix_server(piper, NAMED_PIPE)
         ))
     EVENT_LOOP.run_forever()
 
 
-async def streamer(a, b):
+async def piper(a, b):
     instr = await a.read(-1)
     if instr != b'':
         MSG = {
