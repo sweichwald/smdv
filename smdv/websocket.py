@@ -18,18 +18,39 @@ BACKMESSAGES = collections.deque()  # for communication between js and py
 FORWARDMESSAGES = collections.deque()  # for communication between js and py
 MESSAGE = {}
 EVENT_LOOP = asyncio.get_event_loop()
+NAMED_PIPE = "/tmp/smdv_pipe"
 
 
 def run_websocket_server():
     """ start and run the websocket server """
-    global WEBSOCKETS_SERVER
     global ARGS
     ARGS = parse_args()
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          ARGS.websocket_host,
                                          ARGS.websocket_port)
-    EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
+    EVENT_LOOP.run_until_complete(asyncio.gather(
+        WEBSOCKETS_SERVER,
+        asyncio.start_unix_server(streamer, NAMED_PIPE)
+        ))
     EVENT_LOOP.run_forever()
+
+
+async def streamer(a, b):
+    instr = await a.read(-1)
+    if instr != b'':
+        MSG = {
+            "func": "file",
+            "cwd": "",
+            "cwdEncoded": False,
+            "cwdBody": "",
+            "filename": "live_put",
+            "fileBody": instr.decode(),
+            "fileCwd": "",
+            "fileOpen": True,
+            "fileEncoding": "md",
+            "fileEncoded": False,
+            }
+        await handle_message(None, MSG)
 
 
 async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
