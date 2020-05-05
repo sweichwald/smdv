@@ -8,9 +8,6 @@ quart = limport('quart')
 websockets = limport('websockets')
 
 
-LASTPUT = {}
-
-
 def run_quart_server():
     global ARGS
     ARGS = parse_args()
@@ -30,7 +27,7 @@ def create_app():
         __name__, static_folder=ARGS.home, static_url_path="/@static")
 
     # index route for the smdv app
-    @app.route("/", methods=["GET", "PUT", "DELETE"])
+    @app.route("/", methods=["GET", "DELETE"])
     @app.route("/<path:path>/", methods=["GET"])
     async def index(path: str = "") -> str:
         """ the main (index) route of smdv
@@ -38,8 +35,6 @@ def create_app():
         Returns:
             html: the html representation of the requested path
         """
-        global LASTPUT
-
         if quart.request.method == "GET":
             try:
                 cwd, filename = change_current_working_directory(path)
@@ -57,7 +52,6 @@ def create_app():
                 html = html.replace(k, v)
 
             if path.endswith("live_put") or path.endswith("live_put/"):
-                await send_as_pyclient_async(LASTPUT)
                 return html
 
             if filename:
@@ -96,27 +90,6 @@ def create_app():
                 }
             )
             return html
-
-        if quart.request.method == "PUT":
-            cwd = (
-                os.path.abspath(
-                    os.path.expanduser(os.getcwd()))[len(ARGS.home):] + "/"
-            )
-            reqdata = await quart.request.data
-            LASTPUT = {
-                "func": "file",
-                "cwd": cwd,
-                "cwdEncoded": False,
-                "cwdBody": "",
-                "filename": "live_put",
-                "fileBody": reqdata.decode(),
-                "fileCwd": cwd,
-                "fileOpen": True,
-                "fileEncoding": "md",
-                "fileEncoded": False,
-                }
-            await send_as_pyclient_async(LASTPUT)
-            return ""
 
         if quart.request.method == "DELETE":
             # TODO
