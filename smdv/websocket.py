@@ -26,7 +26,7 @@ def run_websocket_server():
     global ARGS
     ARGS = parse_args()
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
-                                         ARGS.websocket_host,
+                                         "localhost",
                                          ARGS.websocket_port)
     EVENT_LOOP.run_until_complete(asyncio.gather(
         WEBSOCKETS_SERVER,
@@ -350,7 +350,7 @@ async def md2body(content: str = "") -> str:
 
     htmls = [
         urlRegex.sub(
-            f'\\1="http://{ARGS.host}:{ARGS.port}/@static{cwd}\\2"',
+            f'\\1="http://localhost:{ARGS.port}/@static{cwd}\\2"',
             html)
         for html in await jsonlist2html(jsonlist)]
 

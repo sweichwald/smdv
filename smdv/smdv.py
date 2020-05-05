@@ -46,8 +46,6 @@ def run_server_in_subprocess(server="quart"):
         "--home": ARGS.home,
         "--port": ARGS.port,
         "--websocket-port": ARGS.websocket_port,
-        "--host": ARGS.host,
-        "--websocket-host": ARGS.websocket_host,
         "--css": ARGS.css,
     }
     args_list = [str(s) for kv in args.items() for s in kv]
@@ -60,7 +58,7 @@ def stop_quart_server():
     Returns:
         exit_status: the exit status (0=success, 1=failure)
     """
-    connection = httpclient.HTTPConnection(ARGS.host, ARGS.port)
+    connection = httpclient.HTTPConnection("localhost", ARGS.port)
     try:
         connection.connect()
         connection.request("DELETE", "/")
@@ -98,10 +96,10 @@ def request_server_status(server: str = "quart") -> str:
         status: str: the smdv server status
     """
     if server == "quart":
-        connection = httpclient.HTTPConnection(ARGS.host,
+        connection = httpclient.HTTPConnection("localhost",
                                                ARGS.port)
     elif server == "websocket":
-        connection = httpclient.HTTPConnection(ARGS.websocket_host,
+        connection = httpclient.HTTPConnection("localhost",
                                                ARGS.websocket_port)
     else:
         raise ValueError(
@@ -158,14 +156,14 @@ def main():
 
         # if filename argument was given, sync filename or stdin to smdv
         if ARGS.filename:
-            connection = httpclient.HTTPConnection(ARGS.host,
+            connection = httpclient.HTTPConnection("localhost",
                                                    ARGS.port)
             path = ARGS.filename.name
             if path.startswith(ARGS.home):
                 path = path[len(ARGS.home):]
                 if not path.endswith('/'):
                     path += '/'
-                connection = httpclient.HTTPConnection(ARGS.host,
+                connection = httpclient.HTTPConnection("localhost",
                                                        ARGS.port)
                 connection.request("GET", path)
             elif path == '<stdin>':

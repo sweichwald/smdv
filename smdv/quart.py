@@ -13,7 +13,7 @@ def run_quart_server():
     ARGS = parse_args()
     """ start the quart server """
     create_app().run(
-        debug=False, port=ARGS.port, host=ARGS.host)
+        debug=False, port=ARGS.port, host="localhost")
 
 
 def create_app():
@@ -45,7 +45,6 @@ def create_app():
             replacements = {
                 '{SMDV-home-SMDV}': ARGS.home,
                 '{SMDV-css-SMDV}': open(ARGS.css, 'r').read(),
-                '{SMDV-host-SMDV}': ARGS.websocket_host,
                 '{SMDV-port-SMDV}': ARGS.websocket_port,
             }
             for k, v in replacements.items():
@@ -109,7 +108,7 @@ async def send_as_pyclient_async(message: dict):
     """
     message["client"] = "py"
     async with websockets.connect(
-        f"ws://{ARGS.websocket_host}:{ARGS.websocket_port}"
+        f"ws://localhost:{ARGS.websocket_port}"
     ) as websocket:
         await websocket.send(json.dumps(message))
 

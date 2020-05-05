@@ -9,6 +9,8 @@ Some changes compared to the original:
 * use [Pandoc's Markdown][pandocmarkdown] flavour (+emoji), which is more suitable for academic writing
 * flake8/pep8 compliance
 * use quart over flask
+* use unix socket for live preview (to avoid PUT detour via flask)
+* drop websocket- and -host options (should only be run locally)
 * drop `@pipe`; change `@put` to `live_put` for less special URIs
 * separate the html template and css from the python file, strip smdv specific css (other than that for the navbar) and replace it by the default pandoc css
 * implement a (for now hacky and rudimentary) lru_cache-based speed-up

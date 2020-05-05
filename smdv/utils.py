@@ -57,20 +57,6 @@ def parse_args(args=None) -> argparse.Namespace:
         help="port for websocket communication",
     )
     parser.add_argument(
-        "--host",
-        default=os.environ.get("SMDV_DEFAULT_HOST", "localhost"),
-        help=("host on which smdv is served "
-              "(for now, only localhost is supported)"),
-        choices=["localhost", "127.0.0.1"],
-    )
-    parser.add_argument(
-        "--websocket-host",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_HOST", "localhost"),
-        help=("host for websocket communication "
-              "(for now, only localhost is supported)"),
-        choices=["localhost", "127.0.0.1"],
-    )
-    parser.add_argument(
         "--css",
         default=os.environ.get(
             "SMDV_DEFAULT_CSS",
