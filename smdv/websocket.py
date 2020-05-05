@@ -254,8 +254,9 @@ async def txt2body(content: str) -> str:
 
 
 async def md2json(content):
-    proc = await asyncio.create_subprocess_shell(
-        "pandoc --from markdown+emoji --to json --mathml",
+    proc = await asyncio.create_subprocess_exec(
+        "pandoc",
+        "--from", "markdown+emoji", "--to", "json", "--mathml",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE)
@@ -264,8 +265,9 @@ async def md2json(content):
 
 
 async def json2html(jsontxt):
-    proc = await asyncio.create_subprocess_shell(
-        "pandoc --from json --to html5 --mathml",
+    proc = await asyncio.create_subprocess_exec(
+        "pandoc",
+        "--from", "json", "--to", "html5", "--mathml",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE)
