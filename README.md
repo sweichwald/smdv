@@ -8,7 +8,7 @@ Some changes compared to the original:
 
 * use [Pandoc's Markdown][pandocmarkdown] flavour (+emoji), which is more suitable for academic writing
 * flake8/pep8 compliance
-* use quart over flask
+* ~~use quart over flask~~ use entirely local html preview file
 * use unix socket for live preview (to avoid PUT detour via flask)
 * drop websocket- and -host options (should only be run locally)
 * drop `@pipe`; change `@put` to `live_put` for less special URIs

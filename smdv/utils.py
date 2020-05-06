@@ -36,7 +36,7 @@ def parse_args(args=None) -> argparse.Namespace:
         type=argparse.FileType('r'),
         nargs="?",
         default=(None if sys.stdin.isatty() else sys.stdin),
-        help="path or file to open with smdv",
+        help="file to open with smdv",
     )
     parser.add_argument(
         "-H",
@@ -45,24 +45,10 @@ def parse_args(args=None) -> argparse.Namespace:
         help="set the root folder of the smdv server",
     )
     parser.add_argument(
-        "-p",
-        "--port",
-        default=os.environ.get("SMDV_DEFAULT_PORT", "9876"),
-        help="port on which smdv is served.",
-    )
-    parser.add_argument(
         "-w",
-        "--websocket-port",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_PORT", "9877"),
+        "--port",
+        default=os.environ.get("SMDV_DEFAULT_PORT", "9877"),
         help="port for websocket communication",
-    )
-    parser.add_argument(
-        "--css",
-        default=os.environ.get(
-            "SMDV_DEFAULT_CSS",
-            f"{BASE_DIR}/smdv.css",
-        ),
-        help="location of a local markdown css file",
     )
     parser.add_argument(
         "--math",
@@ -72,52 +58,22 @@ def parse_args(args=None) -> argparse.Namespace:
     )
     single_shot_arguments = parser.add_mutually_exclusive_group()
     single_shot_arguments.add_argument(
-        "--server-status",
+        "--status",
         action="store_true",
         default=os.environ.get("SMDV_DEFAULT_SERVER_STATUS", False),
         help="ask status of the smdv server",
     )
     single_shot_arguments.add_argument(
-        "--websocket-server-status",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_WEBSOCKET_SERVER_STATUS", False),
-        help="ask status of the smdv server",
-    )
-    single_shot_arguments.add_argument(
-        "--start-server",
+        "--start",
         action="store_true",
         default=os.environ.get("SMDV_DEFAULT_START_SERVER", False),
         help="start the smdv server (without doing anything else)",
     )
     single_shot_arguments.add_argument(
-        "--stop-server",
+        "--stop",
         action="store_true",
         default=os.environ.get("SMDV_DEFAULT_STOP_SERVER", False),
         help="stop the smdv server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--start-websocket-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START_WEBSOCKET_SERVER", False),
-        help="start the smdv websocket server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop-websocket-server",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP_WEBSOCKET_SERVER", False),
-        help="stop the smdv websocket server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_STOP", False),
-        help="stop smdv running in the background (kills both servers)",
-    )
-    single_shot_arguments.add_argument(
-        "--start",
-        action="store_true",
-        default=os.environ.get("SMDV_DEFAULT_START", False),
-        help="start smdv (both servers)",
     )
     parsed_args = parser.parse_args(args=args)
     if parsed_args.home.endswith("/"):

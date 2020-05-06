@@ -32,45 +32,19 @@ httpclient = limport('http.client')
 
 # Globals
 ARGS = ""  # the smdv command line arguments
-WEBSOCKETS_SERVER = None  # websockets server
 
 
 # run server in new subprocess
-def run_server_in_subprocess(server="quart"):
+def run_server_in_subprocess():
     """ start the websocket server in a subprocess
-
-    Args:
-        server: which server to run in subprocess ["quart", "websocket"]
     """
     args = {
         "--home": ARGS.home,
         "--port": ARGS.port,
-        "--websocket-port": ARGS.websocket_port,
-        "--css": ARGS.css,
         "--math": ARGS.math
     }
     args_list = [str(s) for kv in args.items() for s in kv]
-    subprocess.Popen([f"smdv-{server}"] + args_list)
-
-
-def stop_quart_server():
-    """ stop the smdv server by sending a DELETE request
-
-    Returns:
-        exit_status: the exit status (0=success, 1=failure)
-    """
-    connection = httpclient.HTTPConnection("localhost", ARGS.port)
-    try:
-        connection.connect()
-        connection.request("DELETE", "/")
-        response = connection.getresponse().read().decode().strip()
-        exit_code = 0 if response == "success." else 1
-    except Exception as e:
-        print(e)
-        exit_code = 1
-    finally:
-        connection.close()
-        return exit_code
+    subprocess.Popen([f"smdv-websocket"] + args_list)
 
 
 def stop_websocket_server():
@@ -82,31 +56,19 @@ def stop_websocket_server():
         exit_status: the exit status of the subprocess `fuser -k` system call
     """
     exit_status = subprocess.call(
-        ["fuser", "-k", f"{ARGS.websocket_port}/tcp"])
+        ["fuser", "-k", f"{ARGS.port}/tcp"])
     return exit_status
 
 
 # get status for the smdv server
-def request_server_status(server: str = "quart") -> str:
+def request_server_status() -> str:
     """ request the smdv server status
-
-    Args:
-        server: the server to ask the status for ["quart", "websocket"]
 
     Returns:
         status: str: the smdv server status
     """
-    if server == "quart":
-        connection = httpclient.HTTPConnection("localhost",
-                                               ARGS.port)
-    elif server == "websocket":
-        connection = httpclient.HTTPConnection("localhost",
-                                               ARGS.websocket_port)
-    else:
-        raise ValueError(
-            "request_server_status expects a server value of "
-            "'quart' or 'server'"
-        )
+    connection = httpclient.HTTPConnection("localhost",
+                                           ARGS.port)
     try:
         connection.connect()
         server_status = "running"
@@ -128,32 +90,14 @@ def main():
         ARGS = parse_args()
 
         # first do single-shot smdv flags:
-        if ARGS.start_server:
-            run_server_in_subprocess(server="quart")
-            return 0
-        if ARGS.stop_server:
-            return stop_quart_server()
-        if ARGS.server_status:
-            print(request_server_status(server="quart"))
-            return 0
-
-        if ARGS.start_websocket_server:
-            run_server_in_subprocess(server="websocket")
-            return 0
-        if ARGS.stop_websocket_server:
-            return stop_websocket_server()
-        if ARGS.websocket_server_status:
-            print(request_server_status(server="websocket"))
-            return 0
-
         if ARGS.start:
-            run_server_in_subprocess(server="quart")
-            run_server_in_subprocess(server="websocket")
+            run_server_in_subprocess()
             return 0
         if ARGS.stop:
-            exit_status1 = stop_quart_server()
-            exit_status2 = stop_websocket_server()
-            return exit_status1 + exit_status2
+            return stop_websocket_server()
+        if ARGS.status:
+            print(request_server_status())
+            return 0
 
         # if filename argument was given, sync filename or stdin to smdv
         if ARGS.filename:
