@@ -49,7 +49,7 @@ async def piper(a, b):
             fpath = "LIVE"
             cwd = ARGS.home + '/'
         message = {
-            "fpath": fpath,
+            "fpath": fpath.replace(ARGS.home, ''),
             "htmlblocks": await md2htmlblocks(content, cwd),
             }
         await send_message_to_all_js_clients(message)
@@ -66,7 +66,7 @@ async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
     await register_client(client)
     try:
         async for message in client:
-            await handle_message(client, json.loads(message))
+            await handle_message(client, message)
     finally:
         await unregister_client(client)
 
@@ -85,11 +85,7 @@ async def register_client(client: websockets.WebSocketServerProtocol):
 
     """
     message = await client.recv()
-    message = json.loads(message)
-    clienttype = message.get("client", "")
-    if clienttype == "js":
-        JSCLIENTS.add(client)
-        await client.send(json.dumps(MESSAGE))
+    JSCLIENTS.add(client)
     await handle_message(client, message)
 
 
@@ -108,7 +104,19 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
                          message: str):
     """ handle a message sent by one of the clients
     """
-    print(message)
+    try:
+        fpath = ARGS.home + message
+        with open(fpath, 'r') as f:
+            content = f.read()
+    except (FileNotFoundError, IsADirectoryError):
+        return
+    if content:
+        cwd = fpath.rsplit('/', 1)[0] + '/'
+        message = {
+            "fpath": fpath.replace(ARGS.home, ''),
+            "htmlblocks": await md2htmlblocks(content, cwd),
+            }
+        await send_message_to_all_js_clients(message)
 
 
 # send updated body contents to javascript clients

@@ -16,7 +16,6 @@
 """ smdv: a simple markdown viewer """
 
 import subprocess
-import sys
 
 from .utils import limport, parse_args
 
@@ -106,7 +105,7 @@ def main():
         return 0
 
     except Exception as e:
-        print(e, file=sys.stderr)
+        print(e)
         return 1
 
 

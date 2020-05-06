@@ -271,19 +271,15 @@ const updateBody = function () {
         container.innerHTML = contentnew;
 }
 
-window.onload = function() {
-}
-
-// send message via websocket
-const sendMessage = function(msg) {
-    msg.client = "js";
-    websocket.send(JSON.stringify(msg));
-}
-
 // websockets
 websocket.onopen = function() {
     // on first connection, let server know there is a new client
-    sendMessage({"func": "newjsclient"});
+    params = new URLSearchParams(window.location.search);
+    websocket.send(params.get('fpath'));
+    window.onload = window.onpopstate = history.onpushstate = function () {
+        params = new URLSearchParams(window.location.search);
+        websocket.send(params.get('fpath'));
+    }
 }
 websocket.onmessage = function (event) {
     // parse message
@@ -294,7 +290,10 @@ websocket.onmessage = function (event) {
 
     // change browser url
     url = window.location.pathname + "?fpath=" + message.fpath
-    history.pushState({url:url}, url, url);
+    if (message.fpath !== "" && window.location.protocol+ '//' + url !== window.location.href)
+        history.pushState({url:url}, url, url);
+    else
+        history.replaceState({url:url}, url, url);
 
     // scroll marker into view
     marker = document.getElementById("marker");
