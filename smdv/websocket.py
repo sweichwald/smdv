@@ -1,6 +1,5 @@
 import asyncio
 from async_lru import alru_cache
-import collections
 import json
 import os
 import re
@@ -15,9 +14,6 @@ SEM = asyncio.Semaphore(N_JOBS_PANDOC)
 
 
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
-BACKMESSAGES = collections.deque()  # for communication between js and py
-FORWARDMESSAGES = collections.deque()  # for communication between js and py
-MESSAGE = {}
 EVENT_LOOP = asyncio.get_event_loop()
 NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
 
