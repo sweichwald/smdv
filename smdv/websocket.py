@@ -81,9 +81,7 @@ async def register_client(client: websockets.WebSocketServerProtocol):
         client: the client (websocket) to register.
 
     """
-    message = await client.recv()
     JSCLIENTS.add(client)
-    await handle_message(client, message)
 
 
 async def unregister_client(client: websockets.WebSocketServerProtocol):
