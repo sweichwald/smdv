@@ -223,6 +223,7 @@ function updateBodyFromBlocks(contentnew)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
+    firstchange = null;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -234,7 +235,9 @@ function updateBodyFromBlocks(contentnew)
         // This is important if multiple content elements with the same hash exist
         let j;
         for(j = i; j < children.length && children[j].getAttribute(hashAttr) != newhash; j++);
-
+        if (firstchange === null && (j >= children.length || (j < children.length && j != i))) {
+            firstchange = i;
+        }
         if(j < children.length) {
             _log('hash does exist -- at position:', j);
             if(j != i) {
@@ -257,6 +260,11 @@ function updateBodyFromBlocks(contentnew)
     _log('Removing ');
     while(children.length > i)
         container.removeChild(children[children.length-1])
+
+    // scroll first changed block into view
+    if (firstchange !== null) {
+        children[firstchange].scrollIntoView({block: "center"});
+    }
 }
 
 const container = document.getElementById('content');
@@ -294,12 +302,6 @@ websocket.onmessage = function (event) {
         history.pushState({url:url}, url, url);
     else
         history.replaceState({url:url}, url, url);
-
-    // scroll marker into view
-    marker = document.getElementById("marker");
-    if (marker) {
-            marker.scrollIntoView();
-    }
 }
 </script>
 

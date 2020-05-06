@@ -4,6 +4,7 @@ import collections
 import json
 import os
 import re
+import time
 import websockets
 
 from .utils import parse_args
@@ -40,11 +41,11 @@ async def piper(a, b):
     if instr != b'':
         # filepath passed along
         content = instr.decode()
-        if len(content) > 6 and content[:6] == 'fpath:':
+        if content.startswith('fpath:'):
             lines = content.split('\n')
-            content = '\n'.join(lines[1:])
-            fpath = lines[0][6:]
+            fpath = lines.pop(0)[6:]
             cwd = fpath.rsplit('/', 1)[0] + '/'
+            content = '\n'.join(lines)
         else:
             fpath = "LIVE"
             cwd = ARGS.home + '/'
@@ -185,20 +186,18 @@ async def md2htmlblocks(content, cwd) -> str:
     # TODO: ?
     content = content.replace("%", "%%")
 
-    jsonout = await md2json(content)
+    jsonout = await md2json(content.replace('CuRsOr', ''))
     blocks = jsonout['blocks']
 
-    marker = '<a name="#marker" id="marker"></a>'
-    markertag = '<a name=\\"#marker\\" id=\\"marker\\"></a>'
-    markerpos = None
+    cursorpos = None
+    if 'CuRsOr' in content:
+        cursorcut = await md2json(content.split('CuRsOr')[0])
+        cursorpos = max(0, len(cursorcut['blocks']) - 2)
 
     jsonlist = []
     for bid, b in enumerate(blocks):
         jsonout['blocks'] = [b]
         jsonstr = json.dumps(jsonout)
-        if jsonstr.find(markertag) >= 0:
-            jsonstr = jsonstr.replace(markertag, '')
-            markerpos = bid
         jsonlist.append(jsonstr)
     htmls = [
         urlRegex.sub(
@@ -207,7 +206,7 @@ async def md2htmlblocks(content, cwd) -> str:
         for html in await jsonlist2html(jsonlist)]
 
     htmlblocks = [[hash(html), html] for html in htmls]
-    if markerpos:
-        htmlblocks.insert(markerpos, [hash(marker), marker])
+    if cursorpos:
+        htmlblocks.insert(cursorpos + 1, [hash(time.time()), ''])
 
     return htmlblocks
