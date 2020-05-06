@@ -314,11 +314,7 @@ function initWebsocket()
         const message = JSON.parse(event.data);
 
         // update page
-        const contentnew = message.htmlblocks;
-        if(Array.isArray(contentnew))
-            updateBodyFromBlocks(contentnew);
-        else if(contentnew !== undefined)
-            container.innerHTML = contentnew;
+        updateBodyFromBlocks(message.htmlblocks);
 
         // change browser url
         const url = window.location.pathname + "?fpath=" + message.fpath
