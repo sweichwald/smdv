@@ -307,8 +307,6 @@ async function initWebsocket()
     _websocket = new WebSocket(websocketUrl);
     _websocket.onopen = function() {
         hideStatus();
-        // TODO: Can this send() be removed here and just put after the initial initWebsocket() call below?
-        _websocket.send(fpath);
         _websocketResolve();
     };
     _websocket.onmessage = function (event) {
@@ -353,7 +351,12 @@ window.onpopstate = history.onpushstate = function (event) {
     getWebsocket().then((websocket) => websocket.send(fpath));
 };
 
+// Load websocket
 initWebsocket();
+
+// Load initial document if any
+if(fpath)
+    getWebsocket().then((websocket) => websocket.send(fpath));
 
 </script>
 
