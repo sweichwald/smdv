@@ -169,6 +169,7 @@ const status = document.getElementById('status');
 const container = document.getElementById('content');
 const children = container.children;
 const hashAttr = 'data-hash';
+let fpath = (new URLSearchParams(window.location.search)).get('fpath');
 
 
 // body
@@ -293,23 +294,23 @@ function hideStatus()
 }
 
 const websocketUrl = "ws://localhost:9877/";
-let websocket;
-function initWebsocket()
+let _websocket;
+let _websocketResolve;
+let _websocketPromise = new Promise((resolve, reject) => {
+    _websocketResolve = resolve;
+});
+async function initWebsocket(resolve)
 {
     showStatusInfo('Connecting to '+websocketUrl+'...');
-    websocket = new WebSocket(websocketUrl);
 
-    websocket.onopen = function() {
+    _websocket = new WebSocket(websocketUrl);
+    _websocket.onopen = function() {
         hideStatus();
-        // on first connection, let server know there is a new client
-        const params = new URLSearchParams(window.location.search);
-        websocket.send(params.get('fpath'));
-        window.onload = window.onpopstate = history.onpushstate = function () {
-            params = new URLSearchParams(window.location.search);
-            websocket.send(params.get('fpath'));
-        }
-    }
-    websocket.onmessage = function (event) {
+        // TODO: Can this send() be removed here and just put after the initial initWebsocket() call below?
+        _websocket.send(fpath);
+        _websocketResolve();
+    };
+    _websocket.onmessage = function (event) {
         // parse message
         const message = JSON.parse(event.data);
 
@@ -317,29 +318,40 @@ function initWebsocket()
         updateBodyFromBlocks(message.htmlblocks);
 
         // change browser url
-        const url = window.location.pathname + "?fpath=" + message.fpath
-        if (message.fpath !== "" && window.location.protocol+ '//' + url !== window.location.href)
-            history.pushState({url:url}, url, url);
-        else
-            history.replaceState({url:url}, url, url);
-    }
-    websocket.onerror = function(error) {
-        if(websocket) {
-            showStatusWarning('Error connecting to websocket. Retrying in 5 seconds...');
-            websocket = null;
-            setTimeout(initWebsocket, 5000);
+        fpath = message.fpath;
+        const url = window.location.pathname + "?fpath=" + encodeURIComponent(message.fpath);
+        // TODO: Do we need url comparison here?
+        if (message.fpath !== "" && window.location.protocol+ '//' + url !== window.location.href) {
+            history.pushState({fpath:fpath}, url, url);
+        } else {
+            history.replaceState({fpath:fpath}, url, url);
         }
     };
-    websocket.onclose = function(event) {
-        if(websocket) {
-            showStatusWarning('Lost connection to websocket. Reconnecting in 5 seconds...');
-            websocket = null;
+
+    _websocket.onclose = _websocket.onerror = function() {
+        if(_websocket) {
+            _websocketPromise = new Promise((resolve, reject) => {
+                _websocketResolve = resolve;
+            });
+            _websocket = null;
             setTimeout(initWebsocket, 5000);
+            showStatusWarning('Error connecting to _websocket. Retrying in 5 seconds...');
         }
     };
 }
 
+async function getWebsocket()
+{
+    await _websocketPromise;
+    return _websocket;
+}
+
+window.onpopstate = history.onpushstate = function (event) {
+    getWebsocket().then((websocket) => websocket.send(event.state.fpath));
+};
+
 initWebsocket();
+
 </script>
 
 
