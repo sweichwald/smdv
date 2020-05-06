@@ -15,9 +15,6 @@
 
 """ smdv: a simple markdown viewer """
 
-# Imports
-
-# python standard library
 import subprocess
 import sys
 
@@ -26,28 +23,17 @@ from .utils import limport, parse_args
 # import http.client lazily
 httpclient = limport('http.client')
 
-# 3rd party CLI dependencies
-# fuser
-# pandoc
 
-# Globals
-ARGS = ""  # the smdv command line arguments
-
-
-# run server in new subprocess
-def run_server_in_subprocess():
+def run_server_in_subprocess(port, home, math):
     """ start the websocket server in a subprocess
     """
-    args = {
-        "--home": ARGS.home,
-        "--port": ARGS.port,
-        "--math": ARGS.math
-    }
-    args_list = [str(s) for kv in args.items() for s in kv]
-    subprocess.Popen([f"smdv-websocket"] + args_list)
+    subprocess.Popen(["smdv-websocket",
+                      "--port", port,
+                      "--home", home,
+                      "--math", math])
 
 
-def stop_websocket_server():
+def stop_websocket_server(port):
     """ kills the websocket server
 
     TODO: find a way to do this more gracefully.
@@ -56,19 +42,19 @@ def stop_websocket_server():
         exit_status: the exit status of the subprocess `fuser -k` system call
     """
     exit_status = subprocess.call(
-        ["fuser", "-k", f"{ARGS.port}/tcp"])
+        ["fuser", "-k", f"{port}/tcp"])
     return exit_status
 
 
 # get status for the smdv server
-def request_server_status() -> str:
+def request_server_status(port) -> str:
     """ request the smdv server status
 
     Returns:
         status: str: the smdv server status
     """
     connection = httpclient.HTTPConnection("localhost",
-                                           ARGS.port)
+                                           port)
     try:
         connection.connect()
         server_status = "running"
@@ -85,18 +71,18 @@ def main():
     Returns:
         exit_status: the exit status of smdv.
     """
-    global ARGS
     try:
         ARGS = parse_args()
 
         # first do single-shot smdv flags:
         if ARGS.start:
-            run_server_in_subprocess()
+            if request_server_status(ARGS.port) != "running":
+                run_server_in_subprocess(ARGS.port, ARGS.home, ARGS.math)
             return 0
         if ARGS.stop:
-            return stop_websocket_server()
+            return stop_websocket_server(ARGS.port)
         if ARGS.status:
-            print(request_server_status())
+            print(request_server_status(ARGS.port))
             return 0
 
         # if filename argument was given, sync filename or stdin to smdv
