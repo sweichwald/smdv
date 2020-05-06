@@ -87,6 +87,7 @@
 <body>
 
 
+<div id="status"></div>
 
 <div class="markdown-body" id="content"></div>
 
@@ -164,8 +165,10 @@ async function getKatex() {
 
 
 // global variables
-let message = {};
-const websocket = new WebSocket("ws://localhost:9877/");
+const status = document.getElementById('status');
+const container = document.getElementById('content');
+const children = container.children;
+const hashAttr = 'data-hash';
 
 
 // body
@@ -269,42 +272,78 @@ function updateBodyFromBlocks(contentnew)
     }
 }
 
-const container = document.getElementById('content');
-const children = container.children;
-const hashAttr = 'data-hash';
-
-const updateBody = function () {
-    const contentnew = message.htmlblocks;
-    if(Array.isArray(contentnew))
-        updateBodyFromBlocks(contentnew);
-    else if(contentnew !== undefined)
-        container.innerHTML = contentnew;
-}
-
 // websockets
-websocket.onopen = function() {
-    // on first connection, let server know there is a new client
-    params = new URLSearchParams(window.location.search);
-    websocket.send(params.get('fpath'));
-    window.onload = window.onpopstate = history.onpushstate = function () {
-        params = new URLSearchParams(window.location.search);
+function showStatusWarning(text)
+{
+    status.style.display = 'block';
+    status.style.backgroundColor = 'yellow';
+    status.innerText = text;
+}
+
+function showStatusInfo(text)
+{
+    status.style.display = 'block';
+    status.style.backgroundColor = '';
+    status.innerText = text;
+}
+
+function hideStatus()
+{
+    status.style.display = 'none';
+}
+
+const websocketUrl = "ws://localhost:9877/";
+let websocket;
+function initWebsocket()
+{
+    showStatusInfo('Connecting to '+websocketUrl+'...');
+    websocket = new WebSocket(websocketUrl);
+
+    websocket.onopen = function() {
+        hideStatus();
+        // on first connection, let server know there is a new client
+        const params = new URLSearchParams(window.location.search);
         websocket.send(params.get('fpath'));
+        window.onload = window.onpopstate = history.onpushstate = function () {
+            params = new URLSearchParams(window.location.search);
+            websocket.send(params.get('fpath'));
+        }
     }
-}
-websocket.onmessage = function (event) {
-    // parse message
-    message = JSON.parse(event.data);
+    websocket.onmessage = function (event) {
+        // parse message
+        const message = JSON.parse(event.data);
 
-    // update page
-    updateBody()
+        // update page
+        const contentnew = message.htmlblocks;
+        if(Array.isArray(contentnew))
+            updateBodyFromBlocks(contentnew);
+        else if(contentnew !== undefined)
+            container.innerHTML = contentnew;
 
-    // change browser url
-    url = window.location.pathname + "?fpath=" + message.fpath
-    if (message.fpath !== "" && window.location.protocol+ '//' + url !== window.location.href)
-        history.pushState({url:url}, url, url);
-    else
-        history.replaceState({url:url}, url, url);
+        // change browser url
+        const url = window.location.pathname + "?fpath=" + message.fpath
+        if (message.fpath !== "" && window.location.protocol+ '//' + url !== window.location.href)
+            history.pushState({url:url}, url, url);
+        else
+            history.replaceState({url:url}, url, url);
+    }
+    websocket.onerror = function(error) {
+        if(websocket) {
+            showStatusWarning('Error connecting to websocket. Retrying in 5 seconds...');
+            websocket = null;
+            setTimeout(initWebsocket, 5000);
+        }
+    };
+    websocket.onclose = function(event) {
+        if(websocket) {
+            showStatusWarning('Lost connection to websocket. Reconnecting in 5 seconds...');
+            websocket = null;
+            setTimeout(initWebsocket, 5000);
+        }
+    };
 }
+
+initWebsocket();
 </script>
 
 

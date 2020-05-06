@@ -360,3 +360,9 @@
     code.sourceCode span.re { color: #af3a03; } /* Region marker orange */
     code.sourceCode span.er { color: #9d0006; font-weight: bold; } /* Error red */
     code.sourceCode span.al { color: #9d0006; font-weight: bold; } /* Alert red */
+
+/* status */
+div#status {
+    text-align: center;
+    padding: .5em;
+}
