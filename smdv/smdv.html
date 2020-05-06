@@ -208,7 +208,7 @@ function swapElements(obj1, obj2) {
         container.insertBefore(obj1, obj2);
     } else {
         // insert obj2 right before obj1
-        obj1.parentNode.insertBefore(obj2, obj1);
+        container.insertBefore(obj2, obj1);
 
         // now insert obj1 where obj2 was
         if (next2) {
