@@ -25,10 +25,10 @@ def run_websocket_server():
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
-    EVENT_LOOP.run_until_complete(asyncio.gather(
+    EVENT_LOOP.run_until_complete(asyncio.wait([
         WEBSOCKETS_SERVER,
         asyncio.start_unix_server(piper, NAMED_PIPE)
-        ))
+        ]))
     EVENT_LOOP.run_forever()
 
 
