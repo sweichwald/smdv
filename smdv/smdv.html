@@ -264,7 +264,7 @@ const children = container.children;
 const hashAttr = 'data-hash';
 
 const updateBody = function () {
-    const contentnew = message.fileOpen ? message.fileBody : message.cwdBody;
+    const contentnew = message.htmlblocks;
     if(Array.isArray(contentnew))
         updateBodyFromBlocks(contentnew);
     else if(contentnew !== undefined)
@@ -283,21 +283,18 @@ const sendMessage = function(msg) {
 // websockets
 websocket.onopen = function() {
     // on first connection, let server know there is a new client
-    sendMessage({"func":"newjsclient"});
+    sendMessage({"func": "newjsclient"});
 }
 websocket.onmessage = function (event) {
     // parse message
     message = JSON.parse(event.data);
-    localStorage.pressedButton = "false";
 
     // update page
     updateBody()
 
     // change browser url
-    // history.pushState({}, '');
-    // url = (message.fileOpen) ? message.cwd + message.filename : message.cwd
-    // history.pushState({url:url}, url, url);
-    // window.history.replaceState({}, "", url);
+    url = window.location.pathname + "?fpath=" + message.fpath
+    history.pushState({url:url}, url, url);
 
     // scroll marker into view
     marker = document.getElementById("marker");
