@@ -78,104 +78,6 @@
     code span.va { color: #19177c; } /* Variable */
     code span.vs { color: #4070a0; } /* VerbatimString */
     code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
-
-  /* SMDV style */
-    .markdown-body {
-        box-sizing: border-box;
-        min-width: 200px;
-        max-width: 980px;
-        margin: 0 auto;
-        padding: 45px;
-    }
-    @media (max-width: 767px) {
-        .markdown-body {
-            padding: 15px;
-        }
-    }
-    .tooltip {
-        position: relative;
-        display: inline-block;
-        color: #006080;
-        text-decoration: none;
-    }
-    .tooltip .tooltiptext {
-        visibility: hidden;
-        position: absolute;
-        width: 120px;
-        background-color: #555555;
-        color: #ffffff;
-        text-align: center;
-        padding: 5px 0;
-        border-radius: 6px;
-        z-index: 1;
-        opacity: 0;
-        transition: opacity 0.3s;
-    }
-    .tooltip:hover .tooltiptext {
-        visibility: visible;
-        opacity: 1;
-    }
-    .tooltip-bottom {
-        top: 135%;
-        left: 50%;
-        margin-left: -60px;
-    }
-    .tooltip-bottom::after {
-        content: "";
-        position: absolute;
-        bottom: 100%;
-        left: 50%;
-        margin-left: -5px;
-        border-width: 5px;
-        border-style: solid;
-        border-color: transparent transparent #555555 transparent;
-    }
-    .tooltip-left {
-        top: -5px;
-        bottom:auto;
-        right: 128%;
-    }
-    .tooltip-left::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        left: 100%;
-        margin-top: -5px;
-        border-width: 5px;
-        border-style: solid;
-        border-color: transparent transparent transparent #555555;
-    }
-    .tooltip-right {
-        top: -5px;
-        left: 125%;
-    }
-    .tooltip-right::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        right: 100%;
-        margin-top: -5px;
-        border-width: 5px;
-        border-style: solid;
-        border-color: transparent #555555 transparent transparent;
-    }
-    #navbar {
-        font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol;
-        text-align: center;
-        height: 23px;
-        border-bottom: 1px dotted black;
-    }
-    #notNavbar {
-        font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol;
-        text-align: right;
-        height: 0px;
-    }
-    @media print {
-        #navbar, #notNavbar{
-            display: none !important;
-            height: 0;
-        }
-    }
   </style>
 
 
@@ -188,34 +90,8 @@
 
 
 
-<!-- SMDV navbar -->
-<div id="navbar">
-    <div style="float: left;">
-        <span id="closeFile"></span>
-        <span id="backButton"></span>
-        <span id="upDirectory"></span>
-        <span id="homeButton"></span>
-        <span id="refreshButton"></span>
-        <span id="currentDirectory"></span>
-        <span id="directoryLocation"></span>
-        <span id="showFile"></span>
-        <span id="fileLocation"></span>
-        <span id="encodingType"></span>
-    </div>
-    &nbsp;
-    <div style="float: right;">
-        <span id="hideNavbar"></span>
-    </div>
-</div>
-<div id="notNavbar">
-    <div style="float: right;">
-        <span id="showNavbar"></span>
-    </div>
-</div>
-
-
-
 <div class="markdown-body" id="content"></div>
+
 
 
 <!-- SMDV script -->
@@ -298,32 +174,6 @@ const websocket = new WebSocket("ws://localhost:{SMDV-port-SMDV}/");
 const showNavIf = function(element, condition, icon, tooltiptext, tooltipClass="tooltip-bottom", separator="&nbsp;\n"){ // &middot;
     element.innerHTML = (condition) ? separator + "<a href=\"#\" class=\"tooltip\">"+icon+"<span class=\"tooltiptext " + tooltipClass +"\">" + tooltiptext + "</span></a>" : "";
     element.style.display = (condition) ? "inline" : "none"
-}
-
-// logging
-const log_message = function() {
-    for (const key in message) {
-        console.log(key, ":", message[key].toString().slice(0,20));
-    }
-    console.log("\n");
-}
-
-// navbar
-const updateNavbar = function () {
-    const navbarIsHidden = (localStorage.navbarIsHidden == "true") ? true : false;
-    navbar.style.display = (navbarIsHidden) ? "none" : "block";
-    showNavIf(hideNavbar, !navbarIsHidden, "➖", "hide navbar", tooltipClass="tooltip-left");
-    showNavIf(showNavbar, navbarIsHidden, "➕", "show navbar", tooltipClass="tooltip-left");
-    showNavIf(closeFile, (message.fileOpen), "✖", "close file", tooltipClass="tooltip-right");
-    showNavIf(homeButton, (message.cwd != "/" && !message.fileOpen), "🏠", "home", tooltipClass="tooltip-right");
-    showNavIf(backButton, (!message.fileOpen), "⬅", "back", tooltipClass="tooltip-right");
-    showNavIf(upDirectory, (message.cwd != "/" && !message.fileOpen), "⬆", "folder up", tooltipClass="tooltip-right");
-    showNavIf(currentDirectory, true, "📁", "folder view", tooltipClass = "tooltip-right");
-    showNavIf(directoryLocation, true, message.cwd, home+message.cwd, tooltipClass = "tooltip-bottom", separator="");
-    showNavIf(showFile, message.filename, "📄", "file view", tooltipClass = "tooltip-bottom");
-    filenameTooltip = (message.filename == "live_put") ? "content placed by PUT request": home + message.fileCwd + message.filename;
-    showNavIf(fileLocation, message.filename, message.filename, filenameTooltip, tooltipClass = "tooltip-bottom", separator="");
-    showNavIf(encodingType, (message.fileEncoding && message.fileOpen), "["+message.fileEncoding+"]", "file encoding", tooltipClass = "tooltip-bottom");
 }
 
 // body
@@ -431,7 +281,6 @@ const updateBody = function () {
 
 // activate navbar
 window.onload = function() {
-    updateNavbar();
     history.pushState({}, "", "/");
 }
 
@@ -453,7 +302,6 @@ websocket.onmessage = function (event) {
 
     // update page
     updateBody()
-    updateNavbar()
 
     // change browser url
     // history.pushState({}, '');
