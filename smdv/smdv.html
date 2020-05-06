@@ -181,7 +181,9 @@ async function renderBlockContentsAsync(el)
         const latexStr = mathEl.textContent;
         try {
             const katex = await getKatex();
-            katex.render(latexStr, mathEl);
+            katex.render(latexStr, mathEl, {
+                displayMode: mathEl.classList.contains('display')
+            });
         } catch(e) {
             const errEl = document.createElement('span');
             errEl.style.color = 'red';
