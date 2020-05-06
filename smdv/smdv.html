@@ -170,6 +170,7 @@ const container = document.getElementById('content');
 const children = container.children;
 const hashAttr = 'data-hash';
 let fpath = (new URLSearchParams(window.location.search)).get('fpath');
+window.document.title = 'smdv - '+fpath;
 
 
 // body
@@ -299,7 +300,7 @@ let _websocketResolve;
 let _websocketPromise = new Promise((resolve, reject) => {
     _websocketResolve = resolve;
 });
-async function initWebsocket(resolve)
+async function initWebsocket()
 {
     showStatusInfo('Connecting to '+websocketUrl+'...');
 
@@ -318,10 +319,10 @@ async function initWebsocket(resolve)
         updateBodyFromBlocks(message.htmlblocks);
 
         // change browser url
-        fpath = message.fpath;
         const url = window.location.pathname + "?fpath=" + encodeURIComponent(message.fpath);
-        // TODO: Do we need url comparison here?
-        if (message.fpath !== "" && window.location.protocol+ '//' + url !== window.location.href) {
+        if (message.fpath !== "" && message.fpath != fpath) {
+            fpath = message.fpath;
+            window.document.title = 'smdv - '+fpath;
             history.pushState({fpath:fpath}, url, url);
         } else {
             history.replaceState({fpath:fpath}, url, url);
@@ -347,7 +348,9 @@ async function getWebsocket()
 }
 
 window.onpopstate = history.onpushstate = function (event) {
-    getWebsocket().then((websocket) => websocket.send(event.state.fpath));
+    fpath = event.state.fpath;
+    window.document.title = 'smdv - '+fpath;
+    getWebsocket().then((websocket) => websocket.send(fpath));
 };
 
 initWebsocket();
