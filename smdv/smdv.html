@@ -82,9 +82,7 @@
 
 
 
-  <style>
-  {SMDV-css-SMDV}
-  </style>
+  <link rel="stylesheet" type="text/css" href="./smdv.css" />
 </head>
 <body>
 
@@ -167,14 +165,8 @@ async function getKatex() {
 
 // global variables
 let message = {};
-const home = "{SMDV-home-SMDV}";
-const websocket = new WebSocket("ws://localhost:{SMDV-port-SMDV}/");
+const websocket = new WebSocket("ws://localhost:9877/");
 
-// navbar elements
-const showNavIf = function(element, condition, icon, tooltiptext, tooltipClass="tooltip-bottom", separator="&nbsp;\n"){ // &middot;
-    element.innerHTML = (condition) ? separator + "<a href=\"#\" class=\"tooltip\">"+icon+"<span class=\"tooltiptext " + tooltipClass +"\">" + tooltiptext + "</span></a>" : "";
-    element.style.display = (condition) ? "inline" : "none"
-}
 
 // body
 function _log(...args)
@@ -279,9 +271,7 @@ const updateBody = function () {
         container.innerHTML = contentnew;
 }
 
-// activate navbar
 window.onload = function() {
-    history.pushState({}, "", "/");
 }
 
 // send message via websocket
@@ -305,8 +295,8 @@ websocket.onmessage = function (event) {
 
     // change browser url
     // history.pushState({}, '');
-    url = (message.fileOpen) ? message.cwd + message.filename : message.cwd
-    history.pushState({url:url}, url, url);
+    // url = (message.fileOpen) ? message.cwd + message.filename : message.cwd
+    // history.pushState({url:url}, url, url);
     // window.history.replaceState({}, "", url);
 
     // scroll marker into view
@@ -314,65 +304,6 @@ websocket.onmessage = function (event) {
     if (marker) {
             marker.scrollIntoView();
     }
-}
-
-// navbar
-homeButton.onclick = function() {
-    if (message.cwd != "/") {
-        message.func = "dir";
-        message.cwd = "/";
-        message.cwdBody = "";
-        message.cwdEncoded = false;
-        message.fileOpen = false;
-        sendMessage(message);
-    }
-}
-backButton.onclick = function() {
-    sendMessage({"func":"back"});
-}
-currentDirectory.onclick = directoryLocation.onclick = function() {
-    if (message.fileOpen) {
-        message.func = "dir";
-        message.fileOpen = false;
-        sendMessage(message);
-    }
-}
-showFile.onclick = fileLocation.onclick = function() {
-    if (!message.fileOpen) {
-        message.fileOpen = true;
-        message.cwd = message.fileCwd;
-        message.cwdEncoded = false;
-        sendMessage(message);
-    }
-}
-upDirectory.onclick = function() {
-    if (!message.fileOpen) {
-        message.func = "dir";
-        message.cwd = message.cwd.slice(0, message.cwd.slice(0, -1).lastIndexOf("/"))+"/";
-        message.cwdBody = "";
-        message.cwdEncoded = false;
-        message.fileOpen = false;
-        sendMessage(message);
-    }
-}
-closeFile.onclick = function() {
-    if (message.fileOpen) {
-        message.func = "dir";
-        message.fileOpen = false;
-        message.filename = "";
-        message.fileBody = "";
-        message.fileCwd = "";
-        message.fileEncoding = "";
-        message.fileOpen = false;
-        message.forceClose = true;
-        sendMessage(message);
-    }
-}
-showNavbar.onclick = hideNavbar.onclick = function() {
-    localStorage.navbarIsHidden = (localStorage.navbarIsHidden == "true") ? "false" : "true";
-    window.onload();
-}
-encodingType.onclick = function() {
 }
 </script>
 

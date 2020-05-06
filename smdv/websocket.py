@@ -325,10 +325,10 @@ async def md2body(content: str = "") -> str:
     # TODO: ?
     content = content.replace("%", "%%")
 
-    if len(content) > 4 and content[:4] == 'cwd:':
+    if len(content) > 5 and content[:5] == 'file:':
         lines = content.split('\n')
         content = '\n'.join(lines[1:])
-        cwd = '/' + lines[0][4:] + '/'
+        cwd = lines[0][5:].rsplit('/', 1)[0] + '/'
     else:
         cwd = os.path.abspath(os.getcwd()).replace(ARGS.home, "") + "/"
 
@@ -347,10 +347,9 @@ async def md2body(content: str = "") -> str:
             jsonstr = jsonstr.replace(markertag, '')
             markerpos = bid
         jsonlist.append(jsonstr)
-
     htmls = [
         urlRegex.sub(
-            f'\\1="http://localhost:{ARGS.port}/@static{cwd}\\2"',
+            f'\\1="file://{cwd}\\2"',
             html)
         for html in await jsonlist2html(jsonlist)]
 
