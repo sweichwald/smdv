@@ -1,17 +1,18 @@
 import asyncio
-from async_lru import alru_cache
+import concurrent.futures
+from functools import lru_cache
 import json
 import os
 import re
 import time
+import subprocess
 import websockets
 
 from .utils import parse_args
 
 
-N_JOBS_PANDOC = 10
-SEM = asyncio.Semaphore(N_JOBS_PANDOC)
-
+N_WORKERS_PANDOC = 16
+LRU_CACHE_SIZE = 2048
 
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
 EVENT_LOOP = asyncio.get_event_loop()
@@ -22,18 +23,18 @@ def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args()
+    EVENT_LOOP.set_default_executor(
+        concurrent.futures.ThreadPoolExecutor(max_workers=N_WORKERS_PANDOC))
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
-    EVENT_LOOP.run_until_complete(asyncio.wait([
-        WEBSOCKETS_SERVER,
-        asyncio.start_unix_server(piper, NAMED_PIPE)
-        ]))
+    EVENT_LOOP.create_task(asyncio.start_unix_server(piper, NAMED_PIPE))
+    EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
     EVENT_LOOP.run_forever()
 
 
-async def piper(a, b):
-    instr = await a.read(-1)
+async def piper(reader, writer):
+    instr = await reader.read(-1)
     if instr != b'':
         # filepath passed along
         content = instr.decode()
@@ -49,7 +50,7 @@ async def piper(a, b):
             "fpath": fpath.replace(ARGS.home, ''),
             "htmlblocks": await md2htmlblocks(content, cwd),
             }
-        await send_message_to_all_js_clients(message)
+        EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
 
 async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
@@ -65,7 +66,7 @@ async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
         async for message in client:
             await handle_message(client, message)
     finally:
-        await unregister_client(client)
+        EVENT_LOOP.create_task(unregister_client(client))
 
 
 async def register_client(client: websockets.WebSocketServerProtocol):
@@ -95,23 +96,28 @@ async def unregister_client(client: websockets.WebSocketServerProtocol):
         JSCLIENTS.remove(client)
 
 
+def readfile(fpath):
+    try:
+        with open(fpath, 'r') as f:
+            content = f.read()
+    except (FileNotFoundError, IsADirectoryError):
+        return None
+    return content
+
+
 async def handle_message(client: websockets.WebSocketServerProtocol,
                          message: str):
     """ handle a message sent by one of the clients
     """
-    try:
-        fpath = ARGS.home + message
-        with open(fpath, 'r') as f:
-            content = f.read()
-    except (FileNotFoundError, IsADirectoryError):
-        return
+    fpath = ARGS.home + message
+    content = await EVENT_LOOP.run_in_executor(None, readfile, fpath)
     if content:
         cwd = fpath.rsplit('/', 1)[0] + '/'
         message = {
             "fpath": fpath.replace(ARGS.home, ''),
             "htmlblocks": await md2htmlblocks(content, cwd),
             }
-        await send_message_to_all_js_clients(message)
+        EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
 
 # send updated body contents to javascript clients
@@ -124,46 +130,44 @@ async def send_message_to_all_js_clients(message):
     """
     if JSCLIENTS:
         jsonmessage = json.dumps(message)
-        # TODO
-        await asyncio.wait(
-            [client.send(jsonmessage) for client in JSCLIENTS])
+        for client in JSCLIENTS:
+            EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-async def md2json(content):
-    proc = await asyncio.create_subprocess_exec(
-        "pandoc",
-        "--from", "markdown+emoji", "--to", "json", "--"+ARGS.math,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE)
-    stdout, stderr = await proc.communicate(content.encode())
+def md2json(content):
+    proc = subprocess.Popen(
+        ["pandoc",
+         "--from", "markdown+emoji", "--to", "json", "--"+ARGS.math],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(content.encode())
     return json.loads(stdout)
 
 
-async def json2html(jsontxt):
-    proc = await asyncio.create_subprocess_exec(
-        "pandoc",
-        "--from", "json", "--to", "html5", "--"+ARGS.math,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE)
-    stdout, stderr = await proc.communicate(jsontxt.encode())
-    return stdout.decode()
-
-
-@alru_cache(maxsize=1000)
-async def json2html_safe(jsontxt):
-    async with SEM:
-        return await json2html(jsontxt)
-
-
-async def jsonlist2html(jsontxts):
-    return await asyncio.gather(*(
-        asyncio.ensure_future(json2html_safe(block))
-        for block in jsontxts))
-
-
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
+
+
+@lru_cache(maxsize=LRU_CACHE_SIZE)
+def json2htmlblock(jsontxt, cwd):
+    proc = subprocess.Popen(
+        ["pandoc",
+         "--from", "json", "--to", "html5", "--"+ARGS.math],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(jsontxt.encode())
+    html = urlRegex.sub(
+        f'\\1="file://{cwd}\\2"',
+        stdout.decode())
+    return [hash(html), html]
+
+
+async def jsonlist2htmlblocks(jsontxts, cwd):
+    blocking_tasks = [
+        EVENT_LOOP.run_in_executor(None, json2htmlblock, jsontxt, cwd)
+        for jsontxt in jsontxts]
+    return await asyncio.gather(*blocking_tasks)
 
 
 async def md2htmlblocks(content, cwd) -> str:
@@ -180,12 +184,18 @@ async def md2htmlblocks(content, cwd) -> str:
     # TODO: ?
     content = content.replace("%", "%%")
 
-    jsonout = await md2json(content.replace('CuRsOr', ''))
+    jsonout = await EVENT_LOOP.run_in_executor(
+        None,
+        md2json,
+        content.replace('CuRsOr', ''))
     blocks = jsonout['blocks']
 
     cursorpos = None
     if 'CuRsOr' in content:
-        cursorcut = await md2json(content.split('CuRsOr')[0])
+        cursorcut = await EVENT_LOOP.run_in_executor(
+            None,
+            md2json,
+            content.split('CuRsOr')[0])
         cursorpos = max(0, len(cursorcut['blocks']) - 2)
 
     jsonlist = []
@@ -193,13 +203,8 @@ async def md2htmlblocks(content, cwd) -> str:
         jsonout['blocks'] = [b]
         jsonstr = json.dumps(jsonout)
         jsonlist.append(jsonstr)
-    htmls = [
-        urlRegex.sub(
-            f'\\1="file://{cwd}\\2"',
-            html)
-        for html in await jsonlist2html(jsonlist)]
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd)
 
-    htmlblocks = [[hash(html), html] for html in htmls]
     if cursorpos:
         htmlblocks.insert(cursorpos + 1, [hash(time.time()), ''])
 
