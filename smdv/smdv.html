@@ -200,7 +200,7 @@ async function renderBlockContentsAsync(el)
     // Render viz
     for(const vizEl of el.getElementsByClassName('dot-parse')) {
         const viz = await getViz();
-        viz.renderString(el.textContent, {engine: 'dot', format:'svg'}).then(svg => el.outerHTML = svg);
+        viz.renderString(el.textContent, {engine: 'dot', format:'svg'}).then(svg => el.innerHTML = svg);
     }
 }
 
@@ -230,7 +230,7 @@ function updateBodyFromBlocks(contentnew)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    firstchange = null;
+    let firstchange = null;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -242,14 +242,13 @@ function updateBodyFromBlocks(contentnew)
         // This is important if multiple content elements with the same hash exist
         let j;
         for(j = i; j < children.length && children[j].getAttribute(hashAttr) != newhash; j++);
-        if (firstchange === null && (j >= children.length || (j < children.length && j != i))) {
-            firstchange = i;
-        }
         if(j < children.length) {
             _log('hash does exist -- at position:', j);
             if(j != i) {
                 _log('swapping', j, i);
                 swapElements(children[j], children[i]);
+                if(null === firstchange)
+                    firstchange = i;
             }
         } else {
             _log('hash does not exist yet, creating new');
@@ -260,6 +259,9 @@ function updateBodyFromBlocks(contentnew)
 
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
+
+            if(null === firstchange)
+                firstchange = i;
         }
     }
 
@@ -269,9 +271,9 @@ function updateBodyFromBlocks(contentnew)
         container.removeChild(children[children.length-1])
 
     // scroll first changed block into view
-    if (firstchange !== null) {
+    // TODO: Delay until async katex / viz rendering is done?
+    if (firstchange !== null)
         children[firstchange].scrollIntoView({block: "center"});
-    }
 }
 
 // websockets
