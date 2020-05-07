@@ -17,6 +17,7 @@ LRU_CACHE_SIZE = 2048
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
 EVENT_LOOP = asyncio.get_event_loop()
 NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
+DISTRIBUTING = None
 
 
 def run_websocket_server():
@@ -28,12 +29,13 @@ def run_websocket_server():
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
-    EVENT_LOOP.create_task(asyncio.start_unix_server(piper, NAMED_PIPE))
+    EVENT_LOOP.create_task(asyncio.start_unix_server(new_content, NAMED_PIPE))
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
     EVENT_LOOP.run_forever()
 
 
-async def piper(reader, writer):
+async def new_content(reader, writer):
+    global DISTRIBUTING
     instr = await reader.read(-1)
     if instr != b'':
         # filepath passed along
@@ -43,14 +45,24 @@ async def piper(reader, writer):
             fpath = lines.pop(0)[6:]
             cwd = fpath.rsplit('/', 1)[0] + '/'
             content = '\n'.join(lines)
+            fpath.replace(ARGS.home, '')
         else:
             fpath = "LIVE"
             cwd = ARGS.home + '/'
-        message = {
-            "fpath": fpath.replace(ARGS.home, ''),
-            "htmlblocks": await md2htmlblocks(content, cwd),
-            }
-        EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
+        if DISTRIBUTING:
+            DISTRIBUTING.cancel()
+        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
+            fpath,
+            content,
+            cwd))
+
+
+async def distribute_new_content(fpath, content, cwd):
+    message = {
+        "fpath": fpath,
+        "htmlblocks": await md2htmlblocks(content, cwd),
+        }
+    asyncio.shield(send_message_to_all_js_clients(message))
 
 
 async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
@@ -109,15 +121,19 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
                          message: str):
     """ handle a message sent by one of the clients
     """
-    fpath = ARGS.home + message
-    content = await EVENT_LOOP.run_in_executor(None, readfile, fpath)
+    global DISTRIBUTING
+    fpath = message
+    content = await EVENT_LOOP.run_in_executor(
+        None, readfile, ARGS.home + fpath)
     if content:
         cwd = fpath.rsplit('/', 1)[0] + '/'
-        message = {
-            "fpath": fpath.replace(ARGS.home, ''),
-            "htmlblocks": await md2htmlblocks(content, cwd),
-            }
-        EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
+        fpath.replace(ARGS.home, '')
+        if DISTRIBUTING:
+            DISTRIBUTING.cancel()
+        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
+            fpath,
+            content,
+            cwd))
 
 
 # send updated body contents to javascript clients
