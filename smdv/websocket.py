@@ -13,10 +13,14 @@ from .utils import parse_args
 
 LRU_CACHE_SIZE = 8192
 
-JSCLIENTS = set()  # jsclients wait for an update from the pyclient
+JSCLIENTS = set()
 EVENT_LOOP = asyncio.get_event_loop()
-NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
+
 DISTRIBUTING = None
+
+NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
+if not os.path.exists(NAMED_PIPE):
+    os.mkfifo(NAMED_PIPE)
 
 
 def run_websocket_server():
@@ -28,14 +32,28 @@ def run_websocket_server():
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
-    EVENT_LOOP.create_task(asyncio.start_unix_server(new_content, NAMED_PIPE))
+
+    EVENT_LOOP.run_in_executor(None, monitorpipe)
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
     EVENT_LOOP.run_forever()
 
 
-async def new_content(reader, writer):
+def monitorpipe():
+    EVENT_LOOP.create_task(EVENT_LOOP.connect_read_pipe(
+        ReadPipeProtocol,
+        open(NAMED_PIPE, 'rb')))
+    EVENT_LOOP.run_in_executor(None, monitorpipe)
+
+
+class ReadPipeProtocol(asyncio.Protocol):
+
+    def data_received(self, data):
+        EVENT_LOOP.create_task(new_pipe_content(data))
+        super(ReadPipeProtocol, self).data_received(data)
+
+
+async def new_pipe_content(instr):
     global DISTRIBUTING
-    instr = await reader.read(-1)
     if instr != b'':
         # filepath passed along
         content = instr.decode()
