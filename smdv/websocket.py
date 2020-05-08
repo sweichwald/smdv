@@ -11,8 +11,7 @@ import websockets
 from .utils import parse_args
 
 
-N_WORKERS_PANDOC = 16
-LRU_CACHE_SIZE = 2048
+LRU_CACHE_SIZE = 8192
 
 JSCLIENTS = set()  # jsclients wait for an update from the pyclient
 EVENT_LOOP = asyncio.get_event_loop()
@@ -25,7 +24,7 @@ def run_websocket_server():
     global ARGS
     ARGS = parse_args()
     EVENT_LOOP.set_default_executor(
-        concurrent.futures.ThreadPoolExecutor(max_workers=N_WORKERS_PANDOC))
+        concurrent.futures.ThreadPoolExecutor(max_workers=None))
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)

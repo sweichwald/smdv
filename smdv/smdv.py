@@ -72,11 +72,11 @@ def main():
     """
     try:
         ARGS = parse_args()
-
         # first do single-shot smdv flags:
         if ARGS.start:
             if request_server_status(ARGS.port) != "running":
-                run_server_in_subprocess(ARGS.port, ARGS.home, ARGS.math)
+                run_server_in_subprocess(
+                    ARGS.port, ARGS.home, ARGS.math)
             return 0
         if ARGS.stop:
             return stop_websocket_server(ARGS.port)
