@@ -61,6 +61,9 @@ class ReadPipeProtocol(asyncio.Protocol):
     def data_received(self, data):
         super(ReadPipeProtocol, self).data_received(data)
         self._received.append(data)
+        if data.endswith(b'\0\n'):
+            EVENT_LOOP.create_task(new_pipe_content(self._received))
+            self._received = []
 
     def eof_received(self):
         EVENT_LOOP.create_task(new_pipe_content(self._received))
