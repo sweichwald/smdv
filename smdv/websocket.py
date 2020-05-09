@@ -10,17 +10,16 @@ import websockets
 
 from .utils import parse_args
 
-
 LRU_CACHE_SIZE = 8192
 
 JSCLIENTS = set()
+
 EVENT_LOOP = asyncio.get_event_loop()
 
 DISTRIBUTING = None
 
 NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
-if not os.path.exists(NAMED_PIPE):
-    os.mkfifo(NAMED_PIPE)
+PIPE_LOST = asyncio.Event()
 
 
 def run_websocket_server():
@@ -32,24 +31,36 @@ def run_websocket_server():
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
-
-    EVENT_LOOP.run_in_executor(None, monitorpipe)
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
+    if not os.path.exists(NAMED_PIPE):
+        os.mkfifo(NAMED_PIPE)
+    EVENT_LOOP.create_task(monitorpipe())
     EVENT_LOOP.run_forever()
 
 
-def monitorpipe():
-    EVENT_LOOP.create_task(EVENT_LOOP.connect_read_pipe(
-        ReadPipeProtocol,
-        open(NAMED_PIPE, 'rb')))
-    EVENT_LOOP.run_in_executor(None, monitorpipe)
+async def monitorpipe():
+    EVENT_LOOP.create_task(
+        EVENT_LOOP.connect_read_pipe(
+            ReadPipeProtocol,
+            os.fdopen(
+                os.open(
+                    NAMED_PIPE,
+                    os.O_NONBLOCK | os.O_RDONLY),
+                'r')))
+    await PIPE_LOST.wait()
+    PIPE_LOST.clear()
+    EVENT_LOOP.create_task(monitorpipe())
 
 
 class ReadPipeProtocol(asyncio.Protocol):
 
     def data_received(self, data):
-        EVENT_LOOP.create_task(new_pipe_content(data))
         super(ReadPipeProtocol, self).data_received(data)
+        EVENT_LOOP.create_task(new_pipe_content(data))
+
+    def connection_lost(self, transport):
+        super(ReadPipeProtocol, self).connection_lost(transport)
+        PIPE_LOST.set()
 
 
 async def new_pipe_content(instr):
