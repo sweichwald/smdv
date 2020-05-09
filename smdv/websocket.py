@@ -46,7 +46,7 @@ async def monitorpipe():
                 os.open(
                     NAMED_PIPE,
                     os.O_NONBLOCK | os.O_RDONLY),
-                'r')))
+                'rb')))
     await PIPE_LOST.wait()
     PIPE_LOST.clear()
     EVENT_LOOP.create_task(monitorpipe())
@@ -54,17 +54,25 @@ async def monitorpipe():
 
 class ReadPipeProtocol(asyncio.Protocol):
 
+    def __init__(self, *args, **kwargs):
+        super(ReadPipeProtocol, self).__init__(*args, **kwargs)
+        self._received = []
+
     def data_received(self, data):
         super(ReadPipeProtocol, self).data_received(data)
-        EVENT_LOOP.create_task(new_pipe_content(data))
+        self._received.append(data)
+
+    def eof_received(self):
+        EVENT_LOOP.create_task(new_pipe_content(self._received))
 
     def connection_lost(self, transport):
         super(ReadPipeProtocol, self).connection_lost(transport)
         PIPE_LOST.set()
 
 
-async def new_pipe_content(instr):
+async def new_pipe_content(instrlist):
     global DISTRIBUTING
+    instr = b''.join(instrlist)
     if instr != b'':
         # filepath passed along
         content = instr.decode()
