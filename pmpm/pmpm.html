@@ -78,10 +78,7 @@
     code span.va { color: #19177c; } /* Variable */
     code span.vs { color: #4070a0; } /* VerbatimString */
     code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
-    div#status { left: 0; margin: 0; position: fixed; bottom: 0; width: 100%; }
   </style>
-
-
 
   <link rel="stylesheet" type="text/css" href="./pmpm.css" />
 </head>
@@ -171,7 +168,6 @@ const container = document.getElementById('content');
 const children = container.children;
 const hashAttr = 'data-hash';
 let fpath = (new URLSearchParams(window.location.search)).get('fpath');
-window.document.title = 'pmpm - '+fpath;
 
 
 // body
@@ -364,8 +360,10 @@ window.onpopstate = history.onpushstate = function (event) {
 initWebsocket();
 
 // Load initial document if any
-if(fpath)
+if(fpath) {
+    window.document.title = 'pmpm - '+fpath;
     getWebsocket().then((websocket) => websocket.send(fpath));
+}
 
 </script>
 
