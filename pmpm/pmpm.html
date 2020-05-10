@@ -311,12 +311,10 @@ async function initWebsocket()
 
     _websocket = new WebSocket(websocketUrl);
     _websocket.onopen = function() {
-        showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated.');
+        hideStatus();
         _websocketResolve();
     };
     _websocket.onmessage = function (event) {
-        hideStatus();
-
         // parse message
         const message = JSON.parse(event.data);
 
@@ -332,6 +330,9 @@ async function initWebsocket()
         } else {
             history.replaceState({fpath:fpath}, url, url);
         }
+
+        // hide status, if still shown from reconnect
+        hideStatus();
     };
 
     _websocket.onclose = _websocket.onerror = function() {
@@ -340,8 +341,9 @@ async function initWebsocket()
                 _websocketResolve = resolve;
             });
             _websocket = null;
+            _websocketPromise.then(() => showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated.'));
             setTimeout(initWebsocket, 5000);
-            showStatusWarning('Error connecting to _websocket. Retrying in 5 seconds...');
+            showStatusWarning('Error connecting to '+websocketUrl+'. Retrying in 5 seconds...');
         }
     };
 }
