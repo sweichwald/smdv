@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
-  <title>smdv</title>
+  <title>pmpm</title>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
@@ -82,7 +82,7 @@
 
 
 
-  <link rel="stylesheet" type="text/css" href="./smdv.css" />
+  <link rel="stylesheet" type="text/css" href="./pmpm.css" />
 </head>
 <body>
 
@@ -93,7 +93,7 @@
 
 
 
-<!-- SMDV script -->
+<!-- pmpm script -->
 <script>
 
 // Viz and Katex are loaded dynamically on demand
@@ -170,7 +170,7 @@ const container = document.getElementById('content');
 const children = container.children;
 const hashAttr = 'data-hash';
 let fpath = (new URLSearchParams(window.location.search)).get('fpath');
-window.document.title = 'smdv - '+fpath;
+window.document.title = 'pmpm - '+fpath;
 
 
 // body
@@ -322,7 +322,7 @@ async function initWebsocket()
         const url = window.location.pathname + "?fpath=" + encodeURIComponent(message.fpath);
         if (message.fpath !== "" && message.fpath != fpath) {
             fpath = message.fpath;
-            window.document.title = 'smdv - '+fpath;
+            window.document.title = 'pmpm - '+fpath;
             history.pushState({fpath:fpath}, url, url);
         } else {
             history.replaceState({fpath:fpath}, url, url);
@@ -349,7 +349,7 @@ async function getWebsocket()
 
 window.onpopstate = history.onpushstate = function (event) {
     fpath = event.state.fpath;
-    window.document.title = 'smdv - '+fpath;
+    window.document.title = 'pmpm - '+fpath;
     getWebsocket().then((websocket) => websocket.send(fpath));
 };
 

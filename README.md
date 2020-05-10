@@ -35,15 +35,15 @@ Ideas/TODOs:
 
 
 
-# smdv: a **s**imple **m**ark**d**own **v**iewer
+# pmpm: pandoc markdown preview machine, a simple markdown previewer
 
 Requires pandoc.
-Install using `pip install git+https://github.com/sweichwald/smdv.git#egg=smdv`.
-If installed within a virtual environment, ensure that smdv is appropriately linked and available on your path.
+Install using `pip install git+https://github.com/sweichwald/pmpm.git#egg=pmpm`.
+If installed within a virtual environment, ensure that pmpm is appropriately linked and available on your path.
 
 Use in conjunction with [vim-instant-markdown][vim] to preview pandoc markdown in the browser while editing in vim.
 
-For configuration options consult `smdv --help`; configuration is also possible via environment variables with name pattern `SMDV_DEFAULT_[ARG]`.
+For configuration options consult `pmpm --help`; configuration is also possible via environment variables with name pattern `PMPM_DEFAULT_[ARG]`.
 
 
 

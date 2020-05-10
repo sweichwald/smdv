@@ -17,16 +17,17 @@ if __name__ == "__main__":
         long_description = f.read()
 
     setup(
-        name="smdv",
+        name="pmpm",
         version="0.1.2",
-        description="a simple markdown viewer",
+        description=("pmpm: pandoc markdown preview machine, "
+                     "a simple markdown previewer"),
         long_description=long_description,
         long_description_content_type="text/markdown",
-        url="https://github.com/sweichwald/smdv",
+        url="https://github.com/sweichwald/pmpm",
         license="GPLv3",
         entry_points={"console_scripts": [
-            "smdv = smdv.smdv:main",
-            "smdv-websocket = smdv.websocket:run_websocket_server"]},
+            "pmpm = pmpm.pmpm:main",
+            "pmpm-websocket = pmpm.websocket:run_websocket_server"]},
         python_requires=">=3.6",
         install_requires=install_requires,
         classifiers=[
@@ -37,10 +38,10 @@ if __name__ == "__main__":
             "Operating System :: POSIX :: Linux",
             "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         ],
-        packages=['smdv'],
+        packages=['pmpm'],
         include_package_data=True,
         data_files=[
-            "smdv/smdv.html",
-            "smdv/smdv.css",
+            "pmpm/pmpm.html",
+            "pmpm/pmpm.css",
         ]
     )

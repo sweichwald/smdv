@@ -18,7 +18,7 @@ EVENT_LOOP = asyncio.get_event_loop()
 
 DISTRIBUTING = None
 
-NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/smdv_pipe"
+NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/pmpm_pipe"
 PIPE_LOST = asyncio.Event()
 
 

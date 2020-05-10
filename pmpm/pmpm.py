@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-""" smdv: a simple markdown viewer """
+""" pmpm: pandoc markdown preview machine, a simple markdown previewer """
 
 import subprocess
 
@@ -26,7 +26,7 @@ httpclient = limport('http.client')
 def run_server_in_subprocess(port, home, math):
     """ start the websocket server in a subprocess
     """
-    subprocess.Popen(["smdv-websocket",
+    subprocess.Popen(["pmpm-websocket",
                       "--port", port,
                       "--home", home,
                       "--math", math])
@@ -45,12 +45,12 @@ def stop_websocket_server(port):
     return exit_status
 
 
-# get status for the smdv server
+# get status for the pmpm server
 def request_server_status(port) -> str:
-    """ request the smdv server status
+    """ request the pmpm server status
 
     Returns:
-        status: str: the smdv server status
+        status: str: the pmpm server status
     """
     connection = httpclient.HTTPConnection("localhost",
                                            port)
@@ -65,14 +65,14 @@ def request_server_status(port) -> str:
 
 
 def main():
-    """ The main smdv program
+    """ The main pmpm program
 
     Returns:
-        exit_status: the exit status of smdv.
+        exit_status: the exit status of pmpm.
     """
     try:
         ARGS = parse_args()
-        # first do single-shot smdv flags:
+        # first do single-shot pmpm flags:
         if ARGS.start:
             if request_server_status(ARGS.port) != "running":
                 run_server_in_subprocess(
@@ -84,7 +84,7 @@ def main():
             print(request_server_status(ARGS.port))
             return 0
 
-        # if filename argument was given, sync filename or stdin to smdv
+        # if filename argument was given, sync filename or stdin to pmpm
         if ARGS.filename:
             connection = httpclient.HTTPConnection("localhost",
                                                    ARGS.port)
@@ -101,7 +101,7 @@ def main():
             return connection.getresponse().code != 200
 
         # only happens when no arguments are supplied,
-        # nor anything was piped into smdv:
+        # nor anything was piped into pmpm:
         return 0
 
     except Exception as e:
