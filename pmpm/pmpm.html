@@ -273,7 +273,9 @@ function updateBodyFromBlocks(contentnew)
     // scroll first changed block into view
     // TODO: Delay until async katex / viz rendering is done?
     if (firstchange !== null)
-        children[firstchange].scrollIntoView({block: "center"});
+        window.scrollTo({top:
+            children[firstchange].getBoundingClientRect().top +
+            window.pageYOffset - window.innerHeight / 10})
 }
 
 // websockets
