@@ -78,6 +78,7 @@
     code span.va { color: #19177c; } /* Variable */
     code span.vs { color: #4070a0; } /* VerbatimString */
     code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+    div#status { left: 0; margin: 0; position: fixed; bottom: 0; width: 100%; }
   </style>
 
 
@@ -289,7 +290,7 @@ function showStatusWarning(text)
 function showStatusInfo(text)
 {
     status.style.display = 'block';
-    status.style.backgroundColor = '';
+    status.style.backgroundColor = 'lightgray';
     status.innerText = text;
 }
 
@@ -310,10 +311,12 @@ async function initWebsocket()
 
     _websocket = new WebSocket(websocketUrl);
     _websocket.onopen = function() {
-        hideStatus();
+        showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated.');
         _websocketResolve();
     };
     _websocket.onmessage = function (event) {
+        hideStatus();
+
         // parse message
         const message = JSON.parse(event.data);
 
