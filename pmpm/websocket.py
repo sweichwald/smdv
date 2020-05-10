@@ -4,7 +4,6 @@ from functools import lru_cache
 import json
 import os
 import re
-import time
 import subprocess
 import websockets
 
@@ -242,25 +241,15 @@ async def md2htmlblocks(content, cwd) -> str:
     jsonout = await EVENT_LOOP.run_in_executor(
         None,
         md2json,
-        content.replace('CuRsOr', ''))
+        content)
     blocks = jsonout['blocks']
-
-    cursorpos = None
-    if 'CuRsOr' in content:
-        cursorcut = await EVENT_LOOP.run_in_executor(
-            None,
-            md2json,
-            content.split('CuRsOr')[0])
-        cursorpos = max(0, len(cursorcut['blocks']) - 2)
 
     jsonlist = []
     for bid, b in enumerate(blocks):
         jsonout['blocks'] = [b]
         jsonstr = json.dumps(jsonout)
         jsonlist.append(jsonstr)
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd)
 
-    if cursorpos:
-        htmlblocks.insert(cursorpos + 1, [hash(time.time()), ''])
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd)
 
     return htmlblocks
