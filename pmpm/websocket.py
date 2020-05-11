@@ -203,10 +203,13 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd):
+def json2htmlblock(jsontxt, cwd, citeproc):
+    call = ["pandoc",
+            "--from", "json", "--to", "html5", "--"+ARGS.math]
+    if citeproc:
+        call.extend(["--filter", "pandoc-citeproc"])
     proc = subprocess.Popen(
-        ["pandoc",
-         "--from", "json", "--to", "html5", "--"+ARGS.math],
+        call,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
@@ -217,9 +220,13 @@ def json2htmlblock(jsontxt, cwd):
     return [hash(html), html]
 
 
-async def jsonlist2htmlblocks(jsontxts, cwd):
+async def jsonlist2htmlblocks(jsontxts, cwd, citeproc):
     blocking_tasks = [
-        EVENT_LOOP.run_in_executor(None, json2htmlblock, jsontxt, cwd)
+        EVENT_LOOP.run_in_executor(None,
+                                   json2htmlblock,
+                                   jsontxt,
+                                   cwd,
+                                   citeproc)
         for jsontxt in jsontxts]
     return await asyncio.gather(*blocking_tasks)
 
@@ -242,6 +249,9 @@ async def md2htmlblocks(content, cwd) -> str:
         None,
         md2json,
         content)
+
+    citeproc = 'bibliography' in jsonout['meta']
+
     blocks = jsonout['blocks']
 
     jsonlist = []
@@ -250,6 +260,6 @@ async def md2htmlblocks(content, cwd) -> str:
         jsonstr = json.dumps(jsonout)
         jsonlist.append(jsonstr)
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd)
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, citeproc)
 
     return htmlblocks
