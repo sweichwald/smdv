@@ -68,8 +68,6 @@ Use in conjunction with [vim-instant-markdown][vim] to preview pandoc markdown i
 **Ideas & TODOs:**
 
 * fix blockwise rendering to not mess with footnotes
-* update syntax highlighting style, c.f. [here](https://www.jonashietala.se/blog/2019/01/25/site_restyle_and_update/#changes-to-code-display)
-* clean up css
 * improve the csl pandoc-citeproc style to link to the article's source url provided in the bibfile
 * fade-out highlight changed content
 * kate plugin?
