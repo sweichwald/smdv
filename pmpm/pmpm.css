@@ -13,6 +13,7 @@
     line-height: 1.7;
     padding: 1em;
     margin: auto;
+    margin-bottom: 80%;
     max-width: 42em;
     background: #fefefe;
     }
@@ -367,7 +368,7 @@ div#status {
     padding: .5em;
     position: fixed;
     left: 0;
-    bottom: 0; 
+    bottom: 0;
     margin: 0;
     width: 100%;
 }
