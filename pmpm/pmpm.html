@@ -288,7 +288,8 @@ function updateBodyFromBlocks(contentnew)
     // scroll first changed block into view
     // TODO: Delay until async katex / viz rendering is done?
     if (scrollTarget !== undefined) {
-        scrollTarget = scrollTargetCompare ? findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes) : scrollTarget;
+        if(scrollTargetCompare && scrollTarget.childNodes.length)
+            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
         window.scrollTo({top:
             scrollTarget.getBoundingClientRect().top +
             window.pageYOffset - window.innerHeight / 5})
