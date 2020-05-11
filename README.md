@@ -12,25 +12,25 @@ original copyright and license notices are preserved in [LICENSE](LICENSE) and t
 
 
 
-The idea behind pmpm is to offer a fast local preview of [pandoc-flavoured markdown][pandocmarkdown] files.
+The idea behind pmpm is to offer a fast local rendered html-preview of [pandoc-flavoured markdown][pandocmarkdown] files.
 Thus, pmpm differs from the more feature rich [smdv][smdv] in various ways:
 
 * pmpm is rough around the edges
-* 1 server in pmpm, 2 in smdv
-* pmpm uses a local html preview file, dropping the extra flask server and thus smdv's support for navigating directories from within the browser
-* pmpm __accepts new content under a named pipe__ at `$XDG_RUNTIME_DIR/pmpm_pipe` and distributes the rendered markdown via a websocket server,
-  thus increasing interoperability and yavoiding the slower detour (PUT to flask -> websocket to renderer -> websocket to browser)
+* 1 server in pmpm, 2 servers in smdv
+* pmpm uses a local html preview file, dropping the extra flask server and smdv's support for navigating directories from within the browser
+* pmpm __accepts new markdown content under a named pipe__ at `$XDG_RUNTIME_DIR/pmpm_pipe`, renders it using pandoc, and distributes the rendered markdown via a websocket server,
+  thus increasing interoperability and avoiding the slower detour (PUT to flask -> websocket to renderer -> websocket to browser)
 * pmpm strives to be flake8/pep8 compliant
-* pmpm relies on [Pandoc's Markdown][pandocmarkdown] flavour (+emoji), which is more suitable for __academic writing__
+* pmpm features [Pandoc's Markdown][pandocmarkdown] flavour (+emoji), which is more suitable for __academic writing__ (support for bib files and citations, latex math, ...)
 * for __increased speed__, pmpm aims to make use of async where possible and implements a block-wise lru_cached pandoc-backed rendering threadpool
 * renders dot-parse code blocks using viz.js
 * for __increased speed__, pmpm's javascript updates only the changed blocks instead of re-setting the entire innerhtml
 * pmpm implements an __auto-scroll-to-first-change__ feature for a better live preview experience
 * hack to allow [vim-instant-markdown][vim] to pass along the path of the currently edited file to enable relative include of images
-* uses [killercup's css](https://gist.github.com/killercup/5917178)
-* uses [gruvbox style](https://www.jonashietala.se/blog/2015/08/04/gruvbox_syntax_highlighting_for_pandoc/) syntax highlighting
-* pmpm supports citations
-* live preview for vim/kate is doable and basically should be doable for any editor for which regular piping to pmpm can be implemented --- as a fallback, watch a file for changes using inotify and pipe it to pmpm upon changes to get preview-on-save
+* neat html layout based on [killercup's css](https://gist.github.com/killercup/5917178)
+* live preview for vim ([vim-instant-markdown][vim]) and kate is doable
+and basically can be implemented for any editor by regularly piping the current markdown to pmpm
+--- as a fallback, watch a file for changes using inotify and pipe it to pmpm upon changes to get preview-on-save
 
 > pmpm should thus be faster for its main usecases, but less feature rich than smdv
 
@@ -71,6 +71,82 @@ Use in conjunction with [vim-instant-markdown][vim] to preview pandoc markdown i
 * improve the csl pandoc-citeproc style to link to the article's source url provided in the bibfile
 * fade-out highlight changed content
 * kate plugin?
+
+
+
+---
+
+
+
+## Examples
+
+Please consult pandoc's user guide
+to read up on [Pandoc's Markdown](https://pandoc.org/MANUAL.html)
+and a detailed exposition on the markdown flavour supported by pmpm.
+Pandoc-flavoured markdown supports syntax
+(math, footnotes, citations, sequentially numbered lists, ...)
+beyond traditional markdown features
+(lists, emphasis, strong emphasis, links, ...).
+Most of the functionality carries over to pmpm.
+
+### Math
+
+``` markdown
+One can define commands
+\newcommand{\f}[1]{\widehat{\mathbf{f}}(#1)}
+and use those in block math
+
+$$
+\f{a}
+=
+\int_\mathcal{X}\sqrt{a}\exp^{i\pi x}
+$$
+
+and inline $\mathsf{math}$.
+```
+
+### Citations
+
+[Pandoc's Markdown: Citations](https://pandoc.org/MANUAL.html#citations)
+
+``` markdown
+Some ways to cite references include [@doe1999], @alice20, and [-@42137];
+and supported are also things like
+
+* [see @doe1999;@alice20],
+* refer to @42137 [p. 42],
+* [@doe1999{ii, A, D-Z}, with a suffix], and
+* [@alice20, {pp. iv, vi-xi, (xv)-(xvii)} with suffix here].
+
+End the document with your heading of choice for the reference list,
+which will be added at the end of the document.
+
+# References
+
+---
+# YAML meta block (anywhere in the md file, multiple blocks possible)
+
+# .bib file (absolute path or relative to the md file)
+bibliography: bib.bib
+# pmpm can currently handle only 1 bib file (pandoc can generally handle more)
+
+# whether citations are hyperlinked to bib entries (default: false)
+link-citations: true
+
+# citation styles -- local or remote csl files can be selected
+# dozens of styles can be fonud at the the official repository
+# https://github.com/citation-style-language/styles
+# csl: https://raw.githubusercontent.com/citation-style-language/styles/master/apa-cv.csl
+# default is a chicago author date style
+
+# references can be ensured to be included in the reference list via
+nocite: |
+  @bob137, @pan
+# or, for all entries in the bibliography, use
+# nocite: |
+#   @*
+---
+```
 
 
 

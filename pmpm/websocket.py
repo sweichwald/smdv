@@ -251,7 +251,6 @@ def bibliography(blocks, cwd, bibfile, csl):
     cites = dict.fromkeys(
         item_generator(json.loads(blocks), "citationId")).keys()
     bibcontent = ("---\n"
-                  "reference-section-title: References\n"
                   f"bibliography: {bibfile}\n"
                   f"csl: {csl}\n"
                   "nocite: |\n"
