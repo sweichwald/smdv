@@ -291,15 +291,10 @@ async def md2htmlblocks(content, cwd) -> str:
         html: str: the resulting html
 
     """
-    # pandoc fix: make % shown as a single % (in stead of stopping conversion)
-    # TODO: ?
-    content = content.replace("%", "%%")
-
     jsonout = await EVENT_LOOP.run_in_executor(
         None,
         md2json,
         content)
-
     blocks = jsonout['blocks']
 
     citeproc = 'bibliography' in jsonout['meta']
