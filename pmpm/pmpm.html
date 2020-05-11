@@ -171,11 +171,6 @@ let fpath = (new URLSearchParams(window.location.search)).get('fpath');
 
 
 // body
-function _log(...args)
-{
-    // console.log(...args);
-}
-
 async function renderBlockContentsAsync(el)
 {
     // Render katex
@@ -223,30 +218,32 @@ function swapElements(obj1, obj2) {
     }
 }
 
-function indexOfFirstNewChild(current, previous) {
-    let nochildren = Math.max(current.childNodes.length,
-                              previous.childNodes.length);
-    let i;
-    for (i = 0; i < nochildren - 1; i++) {
-        if (!(current.childNodes[i].isEqualNode(previous.childNodes[i])))
-            break;
+function findFirstChangedChild(currentChildNodes, previousChildNodes)
+{
+    const nchildren = currentChildNodes.length;
+    for(let i = 0; i < nchildren; i++) {
+        const curChild = currentChildNodes[i];
+        const prevChild = previousChildNodes[i];
+        if(!prevChild)
+            return curChild;
+        if(!curChild.isEqualNode(prevChild)) {
+            if(curChild.nodeType != Node.ELEMENT_NODE)
+                return curChild.parentNode;
+            else if(!curChild.childNodes.length)
+                return curChild;
+            else
+                return findFirstChangedChild(curChild.childNodes, prevChild.childNodes);
+        }
     }
-    return i;
-}
-
-function firstNewGrandchild(current, previous) {
-    let newchild = indexOfFirstNewChild(current, previous);
-    let newgrandchild = indexOfFirstNewChild(
-                            current.childNodes[newchild],
-                            previous.childNodes[newchild]);
-    return current.childNodes[newchild].childNodes[newgrandchild];
+    return currentChildNodes[nchildren-1];
 }
 
 function updateBodyFromBlocks(contentnew)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    let scrolltarget = null;
+    let scrollTarget;
+    let scrollTargetCompare;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -259,15 +256,16 @@ function updateBodyFromBlocks(contentnew)
         let j;
         for(j = i; j < children.length && children[j].getAttribute(hashAttr) != newhash; j++);
         if(j < children.length) {
-            _log('hash does exist -- at position:', j);
+            // Hash does exist -- at position j
             if(j != i) {
-                _log('swapping', j, i);
                 swapElements(children[j], children[i]);
-                if (scrolltarget === null)
-                    scrolltarget = firstNewGrandchild(children[i], children[j]);
+                if (scrollTarget === undefined) {
+                    scrolltarget = children[i];
+                    scrollTargetCompare = children[j];
+                }
             }
         } else {
-            _log('hash does not exist yet, creating new');
+            // Hash does not exist, creating new
             const newEl = document.createElement('div');
             newEl.setAttribute(hashAttr, newhash);
             newEl.innerHTML = contentnew[i][1];
@@ -276,28 +274,23 @@ function updateBodyFromBlocks(contentnew)
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
 
-            if (scrolltarget === null && children[i + 1])
-                scrolltarget = firstNewGrandchild(newEl, children[i + 1]);
+            if (scrollTarget === undefined) {
+                scrollTarget = newEl;
+                scrollTargetCompare = children[i + 1];
+            }
         }
     }
 
     // Now all non-needed elements from original content should be at the end and we can remove them
-    _log('Removing ');
     while(children.length > i)
         container.removeChild(children[children.length-1])
 
     // scroll first changed block into view
     // TODO: Delay until async katex / viz rendering is done?
-    if (scrolltarget !== null) {
-        if (!(scrolltarget instanceof HTMLElement)) {
-            previous = scrolltarget.previousElementSibling;
-            if (previous === null)
-                scrolltarget = scrolltarget.parentNode;
-            else
-                scrolltarget = previous;
-        }
+    if (scrollTarget !== undefined) {
+        scrollTarget = scrollTargetCompare ? findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes) : scrollTarget;
         window.scrollTo({top:
-            scrolltarget.getBoundingClientRect().top +
+            scrollTarget.getBoundingClientRect().top +
             window.pageYOffset - window.innerHeight / 5})
     }
 }
