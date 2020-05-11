@@ -245,7 +245,7 @@ def item_generator(json_input, lookup_key):
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def bibliography(blocks, cwd, bibfile):
+def bibliography(blocks, cwd, bibfile, csl):
     # Collect the cite-keys while keeping the order and
     # dropping duplicates
     cites = dict.fromkeys(
@@ -253,6 +253,7 @@ def bibliography(blocks, cwd, bibfile):
     bibcontent = ("---\n"
                   "reference-section-title: References\n"
                   f"bibliography: {bibfile}\n"
+                  f"csl: {csl}\n"
                   "nocite: |\n"
                   f"  @{', @'.join(cites)}\n"
                   "---\n")
@@ -269,14 +270,15 @@ def bibliography(blocks, cwd, bibfile):
     return hash(html), html
 
 
-async def getbibliography(blocks, cwd, bibfile):
+async def getbibliography(blocks, cwd, bibfile, csl):
     return await asyncio.gather(
         EVENT_LOOP.run_in_executor(
             None,
             bibliography,
             json.dumps(blocks),
             cwd,
-            bibfile))
+            bibfile,
+            csl))
 
 
 async def md2htmlblocks(content, cwd) -> str:
@@ -304,11 +306,16 @@ async def md2htmlblocks(content, cwd) -> str:
     if citeproc:
         # suppress individual block bibliographies
         jsonout['meta']['suppress-bibliography'] = {'t': 'MetaBool', 'c': True}
+        try:
+            csl = jsonout['meta']['csl']['c'][0]['c']
+        except KeyError:
+            csl = ''
         # get bibliography separately
         bibhtml = await getbibliography(
             blocks,
             cwd,
-            jsonout['meta']['bibliography']['c'][0]['c'])
+            jsonout['meta']['bibliography']['c'][0]['c'],
+            csl)
 
     jsonlist = []
     for bid, b in enumerate(blocks):
