@@ -78,9 +78,9 @@ async def new_pipe_content(instrlist):
     if instr != b'':
         # filepath passed along
         content = instr.decode()
-        if content.startswith('fpath:'):
+        if content.startswith('<!-- filepath:'):
             lines = content.split('\n')
-            fpath = lines.pop(0)[6:]
+            fpath = lines.pop(0)[14:-4]
             cwd = fpath.rsplit('/', 1)[0] + '/'
             content = '\n'.join(lines)
             fpath.replace(ARGS.home, '')
