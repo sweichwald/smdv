@@ -406,6 +406,10 @@ table td {
 
 
 /* mods */
+body {
+    margin-bottom: 80%;
+    max-width: 52em;
+}
 code, pre { background-color: #fdf6e3; }
 
 
