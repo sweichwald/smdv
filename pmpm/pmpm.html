@@ -175,14 +175,14 @@ function extractFootnotes(newEl, newFn, newhash)
     while(fn && !fn.classList.contains('footnotes'))
         fn = fn.nextElementSibling;
     if(!fn)
-        return;
+        return false;
 
     // Check for ol
     let ol = fn.firstElementChild;
     while(ol && ol.tagName != 'OL')
         ol = ol.nextElementSibling;
     if(!ol)
-        return;
+        return false;
 
     // Move each footnote to global footnotes
     let li;
@@ -208,15 +208,19 @@ function extractFootnotes(newEl, newFn, newhash)
     }
 
     // Remove footnotes container
-    fn.parentNode.removeChild(fn);
+    newEl.removeChild(fn);
+
+    return true;
 }
 
 function updateBodyFromBlocks(contentnew)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    let firstChangeIndex;
-    let firstChangeCompare;
+    let scrollTarget;
+    let scrollTargetCompare;
+    let mustRenumber = false;
+    let renumberNum;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -231,11 +235,18 @@ function updateBodyFromBlocks(contentnew)
         if(j < children.length) {
             // Hash does exist -- at position j
             if(j != i) {
+                // Swap content blocks elements i and j
                 swapElements(container, children[j], children[i]);
-                swapElements(footnotes, footnotesChildren[j], footnotesChildren[i]);
-                if (firstChangeIndex === undefined) {
-                    firstChangeIndex = i;
-                    firstChangeCompare = children[j];
+
+                // Swap footnotes blocks i and j if necessary, i.e. if any contains footnotes
+                if(footnotesChildren[j].childElementCount || footnotesChildren[i].childElementCount) {
+                    swapElements(footnotes, footnotesChildren[j], footnotesChildren[i]);
+                    mustRenumber = true;
+                }
+
+                if (scrollTarget === undefined) {
+                    scrollTarget = children[i];
+                    scrollTargetCompare = children[j];
                 }
             }
         } else {
@@ -250,15 +261,28 @@ function updateBodyFromBlocks(contentnew)
             footnotes.insertBefore(newFn, footnotesChildren[i]);
 
             // Check footnotes
-            extractFootnotes(newEl, newFn, newhash);
+            if(extractFootnotes(newEl, newFn, newhash))
+                mustRenumber = true;
 
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
 
-            if (firstChangeIndex === undefined) {
-                firstChangeIndex = i;
-                firstChangeCompare = children[i+1];
+            if (scrollTarget === undefined) {
+                scrollTarget = children[i];
+                scrollTargetCompare = children[i+1];
             }
+        }
+
+        // Renumber footnotes if necessary
+        if(mustRenumber) {
+            const fnBlock = footnotesChildren[i];
+            if(renumberNum === undefined) {
+                const tmp = fnBlock.previousElementSibling;
+                renumberNum = tmp ? tmp.start + tmp.childElementCount - 1 : 0;
+            }
+            fnBlock.start = renumberNum+1;
+            for(const li of fnBlock.children)
+                document.getElementById(li.getAttribute('data-aref')).firstElementChild.innerText = ++renumberNum;
         }
     }
 
@@ -268,31 +292,14 @@ function updateBodyFromBlocks(contentnew)
         footnotes.removeChild(footnotes.lastElementChild);
     }
 
-    if (firstChangeIndex !== undefined) {
-        // Renumber and show/hide footnotes
-        // TODO: More efficient? Only from first actually changed footnote?
-        let num, block;
-        if(firstChangeIndex > 0) {
-            block = footnotesChildren[firstChangeIndex];
-            const tmp = block.previousElementSibling;
-            num = tmp.start + tmp.childElementCount - 1;
-        } else {
-            block = footnotesChildren[0];
-            num = 0;
-        }
-        while(block) {
-            block.start = num+1;
-            for(const li of block.children)
-                document.getElementById(li.getAttribute('data-aref')).firstElementChild.innerText = ++num;
-            block = block.nextElementSibling;
-        }
-        footnotes.parentNode.style.display = num ? 'block': 'none';
+    if (scrollTarget !== undefined) {
+        // Show/hide footnotes
+        footnotes.parentNode.style.display = renumberNum ? 'block': 'none';
 
         // scroll first changed block into view
         // TODO: Delay until async katex / viz rendering is done?
-        let scrollTarget = children[firstChangeIndex];
-        if(firstChangeCompare && scrollTarget.childNodes.length)
-            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, firstChangeCompare.childNodes);
+        if(scrollTargetCompare && scrollTarget.childNodes.length)
+            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
         window.scrollTo({top:
             scrollTarget.getBoundingClientRect().top +
             window.pageYOffset - window.innerHeight / 5})
