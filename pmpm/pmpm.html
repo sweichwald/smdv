@@ -223,11 +223,30 @@ function swapElements(obj1, obj2) {
     }
 }
 
+function indexOfFirstNewChild(current, previous) {
+    let nochildren = Math.max(current.childNodes.length,
+                              previous.childNodes.length);
+    let i;
+    for (i = 0; i < nochildren - 1; i++) {
+        if (!(current.childNodes[i].isEqualNode(previous.childNodes[i])))
+            break;
+    }
+    return i;
+}
+
+function firstNewGrandchild(current, previous) {
+    let newchild = indexOfFirstNewChild(current, previous);
+    let newgrandchild = indexOfFirstNewChild(
+                            current.childNodes[newchild],
+                            previous.childNodes[newchild]);
+    return current.childNodes[newchild].childNodes[newgrandchild];
+}
+
 function updateBodyFromBlocks(contentnew)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    let firstchange = null;
+    let scrolltarget = null;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -244,8 +263,8 @@ function updateBodyFromBlocks(contentnew)
             if(j != i) {
                 _log('swapping', j, i);
                 swapElements(children[j], children[i]);
-                if(null === firstchange)
-                    firstchange = i;
+                if (scrolltarget === null)
+                    scrolltarget = firstNewGrandchild(children[i], children[j]);
             }
         } else {
             _log('hash does not exist yet, creating new');
@@ -257,8 +276,8 @@ function updateBodyFromBlocks(contentnew)
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
 
-            if(null === firstchange)
-                firstchange = i;
+            if (scrolltarget === null && children[i + 1])
+                scrolltarget = firstNewGrandchild(newEl, children[i + 1]);
         }
     }
 
@@ -269,10 +288,18 @@ function updateBodyFromBlocks(contentnew)
 
     // scroll first changed block into view
     // TODO: Delay until async katex / viz rendering is done?
-    if (firstchange !== null)
+    if (scrolltarget !== null) {
+        if (!(scrolltarget instanceof HTMLElement)) {
+            previous = scrolltarget.previousElementSibling;
+            if (previous === null)
+                scrolltarget = scrolltarget.parentNode;
+            else
+                scrolltarget = previous;
+        }
         window.scrollTo({top:
-            children[firstchange].getBoundingClientRect().top +
-            window.pageYOffset - window.innerHeight / 10})
+            scrolltarget.getBoundingClientRect().top +
+            window.pageYOffset - window.innerHeight / 5})
+    }
 }
 
 // websockets
