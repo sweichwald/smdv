@@ -9,12 +9,15 @@
 </head>
 <body>
 
-
 <div id="status"></div>
 
-
-<div class="markdown-body" id="content"></div>
-
+<div class="markdown-body">
+    <div id="content"></div>
+    <div class="footnotes" style="display: none;">
+        <hr>
+        <div id="footnotes"></div>
+    </div>
+</div>
 
 <!-- pmpm script -->
 <script>
@@ -92,6 +95,8 @@ const status = document.getElementById('status');
 const container = document.getElementById('content');
 const children = container.children;
 const hashAttr = 'data-hash';
+const footnotes = document.getElementById('footnotes');
+const footnotesChildren = footnotes.children;
 let fpath = (new URLSearchParams(window.location.search)).get('fpath');
 
 
@@ -121,24 +126,24 @@ async function renderBlockContentsAsync(el)
     }
 }
 
-function swapElements(obj1, obj2) {
+function swapElements(parent, obj1, obj2) {
     // save the location of obj2
     const next2 = obj2.nextSibling;
     // special case for obj1 is the next sibling of obj2
     if (next2 === obj1) {
         // just put obj1 before obj2
-        container.insertBefore(obj1, obj2);
+        parent.insertBefore(obj1, obj2);
     } else {
         // insert obj2 right before obj1
-        container.insertBefore(obj2, obj1);
+        parent.insertBefore(obj2, obj1);
 
         // now insert obj1 where obj2 was
         if (next2) {
             // if there was an element after obj2, then insert obj1 right before that
-            container.insertBefore(obj1, next2);
+            parent.insertBefore(obj1, next2);
         } else {
             // otherwise, just append as last child
-            container.appendChild(obj1);
+            parent.appendChild(obj1);
         }
     }
 }
@@ -163,12 +168,55 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
     return currentChildNodes[nchildren-1];
 }
 
+function extractFootnotes(newEl, newFn, newhash)
+{
+    // Check for section with class 'footnotes'
+    let fn = newEl.firstElementChild;
+    while(fn && !fn.classList.contains('footnotes'))
+        fn = fn.nextElementSibling;
+    if(!fn)
+        return;
+
+    // Check for ol
+    let ol = fn.firstElementChild;
+    while(ol && ol.tagName != 'OL')
+        ol = ol.nextElementSibling;
+    if(!ol)
+        return;
+
+    // Move each footnote to global footnotes
+    let li;
+    while(li = ol.firstElementChild) {
+        const num = li.id.slice(2);
+
+        // Fix link hrefs and ids
+        li.id = newhash+li.id;
+        for(const aback of li.getElementsByTagName('a')) {
+            if(aback.getAttribute('href') == '#fnref'+num) {
+                aback.setAttribute('href', '#'+newhash+'fnref'+num);
+                const aref = document.getElementById('fnref'+num);
+                aref.id = newhash+aref.id;
+                aref.setAttribute('href', '#'+newhash+'fn'+num);
+                li.setAttribute('data-aref', aref.id);
+                break; // Should only be one such link
+            }
+        }
+
+        // Move footnote to global footnotes
+        ol.removeChild(li);
+        newFn.appendChild(li);
+    }
+
+    // Remove footnotes container
+    fn.parentNode.removeChild(fn);
+}
+
 function updateBodyFromBlocks(contentnew)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    let scrollTarget;
-    let scrollTargetCompare;
+    let firstChangeIndex;
+    let firstChangeCompare;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -183,10 +231,11 @@ function updateBodyFromBlocks(contentnew)
         if(j < children.length) {
             // Hash does exist -- at position j
             if(j != i) {
-                swapElements(children[j], children[i]);
-                if (scrollTarget === undefined) {
-                    scrolltarget = children[i];
-                    scrollTargetCompare = children[j];
+                swapElements(container, children[j], children[i]);
+                swapElements(footnotes, footnotesChildren[j], footnotesChildren[i]);
+                if (firstChangeIndex === undefined) {
+                    firstChangeIndex = i;
+                    firstChangeCompare = children[j];
                 }
             }
         } else {
@@ -196,25 +245,54 @@ function updateBodyFromBlocks(contentnew)
             newEl.innerHTML = contentnew[i][1];
             container.insertBefore(newEl, children[i]);
 
+            // Create footnotes placeholder
+            const newFn = document.createElement('ol');
+            footnotes.insertBefore(newFn, footnotesChildren[i]);
+
+            // Check footnotes
+            extractFootnotes(newEl, newFn, newhash);
+
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
 
-            if (scrollTarget === undefined) {
-                scrollTarget = newEl;
-                scrollTargetCompare = children[i + 1];
+            if (firstChangeIndex === undefined) {
+                firstChangeIndex = i;
+                firstChangeCompare = children[i+1];
             }
         }
     }
 
     // Now all non-needed elements from original content should be at the end and we can remove them
-    while(children.length > i)
-        container.removeChild(children[children.length-1])
+    while(children.length > i) {
+        container.removeChild(container.lastElementChild);
+        footnotes.removeChild(footnotes.lastElementChild);
+    }
 
-    // scroll first changed block into view
-    // TODO: Delay until async katex / viz rendering is done?
-    if (scrollTarget !== undefined) {
-        if(scrollTargetCompare && scrollTarget.childNodes.length)
-            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
+    if (firstChangeIndex !== undefined) {
+        // Renumber and show/hide footnotes
+        // TODO: More efficient? Only from first actually changed footnote?
+        let num, block;
+        if(firstChangeIndex > 0) {
+            block = footnotesChildren[firstChangeIndex];
+            const tmp = block.previousElementSibling;
+            num = tmp.start + tmp.childElementCount - 1;
+        } else {
+            block = footnotesChildren[0];
+            num = 0;
+        }
+        while(block) {
+            block.start = num+1;
+            for(const li of block.children)
+                document.getElementById(li.getAttribute('data-aref')).firstElementChild.innerText = ++num;
+            block = block.nextElementSibling;
+        }
+        footnotes.parentNode.style.display = num ? 'block': 'none';
+
+        // scroll first changed block into view
+        // TODO: Delay until async katex / viz rendering is done?
+        let scrollTarget = children[firstChangeIndex];
+        if(firstChangeCompare && scrollTarget.childNodes.length)
+            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, firstChangeCompare.childNodes);
         window.scrollTo({top:
             scrollTarget.getBoundingClientRect().top +
             window.pageYOffset - window.innerHeight / 5})
@@ -297,6 +375,11 @@ async function getWebsocket()
 }
 
 window.onpopstate = history.onpushstate = function (event) {
+
+    // Don't do anything on scroll to footnotes
+    if(event.state === null)
+        return;
+
     fpath = event.state.fpath;
     window.document.title = 'pmpm - '+fpath;
     getWebsocket().then((websocket) => websocket.send(fpath));
