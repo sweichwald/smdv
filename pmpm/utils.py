@@ -1,7 +1,6 @@
 import argparse
 import importlib
 import os
-import sys
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -33,20 +32,13 @@ def parse_args(args=None) -> argparse.Namespace:
         description=("pmpm: pandoc markdown preview machine, "
                      "a simple markdown previewer"))
     parser.add_argument(
-        "filename",
-        type=argparse.FileType('r'),
-        nargs="?",
-        default=(None if sys.stdin.isatty() else sys.stdin),
-        help="file to open with pmpm",
-    )
-    parser.add_argument(
         "-H",
         "--home",
         default=os.environ.get("PMPM_DEFAULT_HOME", os.path.expanduser("~")),
         help="set the root folder of the pmpm server",
     )
     parser.add_argument(
-        "-w",
+        "-p",
         "--port",
         default=os.environ.get("PMPM_DEFAULT_PORT", "9877"),
         help="port for websocket communication",

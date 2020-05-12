@@ -74,8 +74,6 @@ If installed within a virtual environment, ensure that pmpm is appropriately lin
 * open the `pmpm.html` file in your browser
 * pipe some markdown to pmpm `cat file.md > $XDG_RUNTIME_DIR/pmpm_pipe`\
   (possibly passing along the filepath via a first line html comment of the form `<!-- filepath:/dir/to/file.md -->` to enable relative image paths etc.)
-* alternatively, once the pmpm server is started:
-  `pmpm ~/some/path/to/file.md`
 * your browser should show the rendered markdown
 
 For configuration options consult `pmpm --help`; configuration is also possible via environment variables with name pattern `PMPM_DEFAULT_[ARG]`.

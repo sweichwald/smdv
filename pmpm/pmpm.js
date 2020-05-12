@@ -314,7 +314,8 @@ async function initWebsocket()
 
     _websocket = new WebSocket(websocketUrl);
     _websocket.onopen = function() {
-        hideStatus();
+        // When refreshing the page, it may be irritatingly empty --> show this
+        showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated. Pipe something to pmpm ;-)');
         _websocketResolve();
     };
     _websocket.onmessage = function (event) {
@@ -344,7 +345,7 @@ async function initWebsocket()
                 _websocketResolve = resolve;
             });
             _websocket = null;
-            _websocketPromise.then(() => showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated.'));
+            _websocketPromise.then(() => showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated. Pipe something to pmpm ;-)'));
             setTimeout(initWebsocket, 5000);
             showStatusWarning('Error connecting to '+websocketUrl+'. Retrying in 5 seconds...');
         }

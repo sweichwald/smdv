@@ -84,22 +84,6 @@ def main():
             print(request_server_status(ARGS.port))
             return 0
 
-        # if filename argument was given, sync filename or stdin to pmpm
-        if ARGS.filename:
-            connection = httpclient.HTTPConnection("localhost",
-                                                   ARGS.port)
-            path = ARGS.filename.name
-            if path.startswith(ARGS.home):
-                path = path[len(ARGS.home):]
-                if not path.endswith('/'):
-                    path += '/'
-                connection = httpclient.HTTPConnection("localhost",
-                                                       ARGS.port)
-                connection.request("GET", path)
-            elif path == '<stdin>':
-                connection.request("PUT", "/", ARGS.filename.read())
-            return connection.getresponse().code != 200
-
         # only happens when no arguments are supplied,
         # nor anything was piped into pmpm:
         return 0
