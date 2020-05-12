@@ -174,7 +174,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
             }))
         return
 
-    cwd = fpath.rsplit('/', 1)[0] + '/'
+    cwd = ARGS.home + fpath.rsplit('/', 1)[0] + '/'
     fpath.replace(ARGS.home, '')
     if DISTRIBUTING:
         DISTRIBUTING.cancel()
