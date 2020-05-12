@@ -270,7 +270,8 @@ function updateBodyFromBlocks(contentnew)
 
     if (scrollTarget !== undefined) {
         // Show/hide footnotes
-        footnotes.parentNode.style.display = footnotes.childElementCount ? 'block': 'none';
+        const showFootnotes = footnotes.lastElementChild.start > 1 || footnotes.lastElementChild.childElementCount;
+        footnotes.parentNode.style.display = showFootnotes ? 'block': 'none';
 
         // scroll first changed block into view
         // TODO: Delay until async katex / viz rendering is done?
