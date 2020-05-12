@@ -80,6 +80,18 @@ For configuration options consult `pmpm --help`; configuration is also possible 
 
 Use in conjunction with [vim2pmpm][vim] to preview pandoc markdown in the browser while editing in vim.
 
+Export the pandoc-flavoured markdown files to PDF
+e.g. via wkhtmltopdf
+``` bash
+pandoc file.md \
+  --from markdown+emoji \
+  --to html5 \
+  --mathml \
+  --css path/to/pmpm.css \
+  --filter pandoc-citeproc \
+  -o file.md.pdf
+```
+
 
 
 ---
