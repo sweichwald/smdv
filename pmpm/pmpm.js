@@ -320,6 +320,10 @@ async function initWebsocket()
     _websocket.onmessage = function (event) {
         // parse message
         const message = JSON.parse(event.data);
+        if(message.error !== undefined) {
+            showStatusWarning(message.error);
+            return;
+        }
 
         // update page
         updateBodyFromBlocks(message.htmlblocks);

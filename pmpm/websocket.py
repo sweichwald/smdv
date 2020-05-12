@@ -96,10 +96,15 @@ async def new_pipe_content(instrlist):
 
 
 async def distribute_new_content(fpath, content, cwd):
-    message = {
-        "fpath": fpath,
-        "htmlblocks": await md2htmlblocks(content, cwd),
-        }
+    try:
+        message = {
+            "fpath": fpath,
+            "htmlblocks": await md2htmlblocks(content, cwd),
+            }
+    except Exception as e:
+        message = {
+            "error": str(e)
+            }
     asyncio.shield(send_message_to_all_js_clients(message))
 
 
@@ -147,11 +152,8 @@ async def unregister_client(client: websockets.WebSocketServerProtocol):
 
 
 def readfile(fpath):
-    try:
-        with open(fpath, 'r') as f:
-            content = f.read()
-    except (FileNotFoundError, IsADirectoryError):
-        return None
+    with open(fpath, 'r') as f:
+        content = f.read()
     return content
 
 
@@ -161,17 +163,25 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
     """
     global DISTRIBUTING
     fpath = message
-    content = await EVENT_LOOP.run_in_executor(
-        None, readfile, ARGS.home + fpath)
-    if content:
-        cwd = fpath.rsplit('/', 1)[0] + '/'
-        fpath.replace(ARGS.home, '')
+    try:
+        content = await EVENT_LOOP.run_in_executor(
+            None, readfile, ARGS.home + fpath)
+    except (FileNotFoundError, IsADirectoryError) as e:
         if DISTRIBUTING:
             DISTRIBUTING.cancel()
-        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
-            fpath,
-            content,
-            cwd))
+        DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
+            "error": str(e)
+            }))
+        return
+
+    cwd = fpath.rsplit('/', 1)[0] + '/'
+    fpath.replace(ARGS.home, '')
+    if DISTRIBUTING:
+        DISTRIBUTING.cancel()
+    DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
+        fpath,
+        content,
+        cwd))
 
 
 # send updated body contents to javascript clients
