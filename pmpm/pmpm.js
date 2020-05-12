@@ -314,8 +314,7 @@ async function initWebsocket()
 
     _websocket = new WebSocket(websocketUrl);
     _websocket.onopen = function() {
-        // When refreshing the page, it may be irritatingly empty --> show this
-        showStatusInfo('Just connected to '+websocketUrl+'. Shown content is possibly outdated. Pipe something to pmpm ;-)');
+        hideStatus();
         _websocketResolve();
     };
     _websocket.onmessage = function (event) {
@@ -373,7 +372,11 @@ window.onpopstate = history.onpushstate = function (event) {
 initWebsocket();
 
 // Load initial document if any
-if(fpath) {
+if(fpath && fpath !== 'LIVE') {
     window.document.title = 'pmpm - '+fpath;
     getWebsocket().then((websocket) => websocket.send(fpath));
+} else {
+    // When refreshing the page, it may be irritatingly empty --> show this
+    getWebsocket().then((_) => showStatusInfo('Just connected to '+websocketUrl+'. Pipe something to pmpm ;-)'));
 }
+
