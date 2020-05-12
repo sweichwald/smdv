@@ -64,7 +64,8 @@ yet less feature-rich than smdv
 ## Installation
 
 Requires a reasonably recent pandoc, pandoc-citeproc, and browser.
-Install pmpm using `pip install git+https://github.com/sweichwald/pmpm.git#egg=pmpm`.
+Install pmpm using\
+`pip install git+https://github.com/sweichwald/pmpm.git#egg=pmpm`.\
 If installed within a virtual environment, ensure that pmpm is appropriately linked and available on your path.
 
 ## Usage
@@ -89,6 +90,10 @@ pandoc file.md \
   --mathml \
   --css path/to/pmpm.css \
   --filter pandoc-citeproc \
+  --V margin-top=20 \
+  --V margin-right=20 \
+  --V margin-bottom=20 \
+  --V margin-left=20 \
   -o file.md.pdf
 ```
 

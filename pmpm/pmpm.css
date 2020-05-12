@@ -374,7 +374,7 @@ table td {
   pre, blockquote {
     border: 1px solid #999;
     padding-right: 1em;
-    page-break-inside: avoid;
+    /* page-break-inside: avoid; */
   }
 
   tr, img {
@@ -406,11 +406,19 @@ table td {
 
 
 /* mods */
-body {
+@media screen {
+  body {
     margin-bottom: 80%;
-    max-width: 52em;
+    max-width: 44em;
+  }
 }
-code, pre { background-color: #fdf6e3; }
+code, .sourceCode {
+    background-color: #fdf6e3;
+}
+div.sourceCode pre {
+    padding-left: 5px;
+    padding-right: 5px;
+}
 
 
 
