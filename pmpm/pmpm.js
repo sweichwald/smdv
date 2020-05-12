@@ -90,7 +90,7 @@ async function renderBlockContentsAsync(el)
         } catch(e) {
             const errEl = document.createElement('span');
             errEl.style.color = 'red';
-            errEl.innerText = latexStr + ' ('+e.message+')';
+            errEl.textContent = latexStr + ' ('+e.message+')';
             mathEl.appendChild(errEl);
         }
     }
@@ -144,7 +144,19 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
     return currentChildNodes[nchildren-1];
 }
 
-function extractFootnotes(newEl, newFn, newhash)
+function footnoteClickEvent(event)
+{
+    let a = event.target;
+    while(a && a.tagName != 'A')
+        a = a.parentNode;
+    if(!a)
+        return true;
+
+    window.scrollTo({top: a._footnoteHref.getBoundingClientRect().top + window.pageYOffset});
+    return false;
+}
+
+function extractFootnotes(newEl, newFn)
 {
     // Check for section with class 'footnotes'
     let fn = newEl.firstElementChild;
@@ -166,14 +178,24 @@ function extractFootnotes(newEl, newFn, newhash)
         const num = li.id.slice(2);
 
         // Fix link hrefs and ids
-        li.id = newhash+li.id;
+        // Do not set special ids and hrefs. Otherwise, the automatic
+        // change detection in findFirstChangedChild() may just always
+        // detect the first footnote.
+        // But: attributes like _footenoteHref and _footnoteAref 
+        // are ignored by isEqualNode(), so we use them and do
+        // scrolling in our own onclick event handler.
+        li.removeAttribute('id'); // not unique
         for(const aback of li.getElementsByTagName('a')) {
             if(aback.getAttribute('href') == '#fnref'+num) {
-                aback.setAttribute('href', '#'+newhash+'fnref'+num);
                 const aref = document.getElementById('fnref'+num);
-                aref.id = newhash+aref.id;
-                aref.setAttribute('href', '#'+newhash+'fn'+num);
-                li.setAttribute('data-aref', aref.id);
+                aref.removeAttribute('id'); // not unique
+                aref._footnoteHref = aback;
+                aref.onclick = footnoteClickEvent;
+
+                li._footnoteAref = aref;
+                aback._footnoteHref = aref;
+                aback.onclick = footnoteClickEvent;
+
                 break; // Should only be one such link
             }
         }
@@ -236,8 +258,8 @@ function updateBodyFromBlocks(contentnew)
             const newFn = document.createElement('ol');
             footnotes.insertBefore(newFn, footnotesChildren[i]);
 
-            // Check footnotes
-            if(extractFootnotes(newEl, newFn, newhash))
+            // Check footnotes.
+            if(extractFootnotes(newEl, newFn))
                 mustRenumber = true;
 
             // asynchronously render latex and viz if necessary
@@ -258,7 +280,7 @@ function updateBodyFromBlocks(contentnew)
             }
             fnBlock.start = renumberNum+1;
             for(const li of fnBlock.children)
-                document.getElementById(li.getAttribute('data-aref')).firstElementChild.innerText = ++renumberNum;
+                li._footnoteAref.firstElementChild.textContent = ++renumberNum;
         }
     }
 
@@ -288,14 +310,14 @@ function showStatusWarning(text)
 {
     status.style.display = 'block';
     status.style.backgroundColor = 'yellow';
-    status.innerText = text;
+    status.textContent = text;
 }
 
 function showStatusInfo(text)
 {
     status.style.display = 'block';
     status.style.backgroundColor = 'lightgray';
-    status.innerText = text;
+    status.textContent = text;
 }
 
 function hideStatus()
