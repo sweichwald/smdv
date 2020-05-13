@@ -214,9 +214,9 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd):
+def json2htmlblock(jsontxt, cwd, outtype):
     call = ["pandoc",
-            "--from", "json", "--to", "html5", "--"+ARGS.math]
+            "--from", "json", "--to", outtype, "--"+ARGS.math]
     proc = subprocess.Popen(
         call,
         cwd=cwd,
@@ -231,12 +231,13 @@ def json2htmlblock(jsontxt, cwd):
     return [hash(html), html]
 
 
-async def jsonlist2htmlblocks(jsontxts, cwd):
+async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
     blocking_tasks = [
         EVENT_LOOP.run_in_executor(None,
                                    json2htmlblock,
                                    jsontxt,
-                                   cwd)
+                                   cwd,
+                                   outtype)
         for jsontxt in jsontxts]
     return await asyncio.gather(*blocking_tasks)
 
@@ -263,6 +264,10 @@ async def md2htmlblocks(content, cwd) -> str:
         jsonstr = json.dumps(jsonout)
         jsonlist.append(jsonstr)
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd)
+    outtype = "html5"
+    if content.startswith("<!-- revealjs -->\n"):
+        outtype = "revealjs"
+
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype)
 
     return htmlblocks
