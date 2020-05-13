@@ -99,7 +99,7 @@ async def new_pipe_content(instrlist):
 async def distribute_new_content(fpath, content):
     try:
         message = {
-            "fpath": str(fpath.relative_to(ARGS.home)),
+            "fpath": str(os.path.relpath(fpath, ARGS.home)),
             "htmlblocks": await md2htmlblocks(content, fpath.parent),
             }
     except Exception as e:
