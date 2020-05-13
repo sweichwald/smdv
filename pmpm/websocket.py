@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import traceback
 import websockets
 
 from .utils import parse_args
@@ -106,6 +107,7 @@ async def distribute_new_content(fpath, content):
         message = {
             "error": str(e)
             }
+        traceback.print_exc()
     asyncio.shield(send_message_to_all_js_clients(message))
 
 
@@ -173,6 +175,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
             "error": str(e)
             }))
+        traceback.print_exc()
         return
 
     if DISTRIBUTING:
@@ -196,13 +199,14 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-def md2json(content):
+def md2json(content, cwd):
     proc = subprocess.Popen(
         ["pandoc",
          "--from", "markdown+emoji",
          "--to", "json",
          "--filter", "pandoc-citeproc",
          "--"+ARGS.math],
+        cwd=cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
@@ -254,7 +258,8 @@ async def md2htmlblocks(content, cwd) -> str:
     jsonout = await EVENT_LOOP.run_in_executor(
         None,
         md2json,
-        content)
+        content,
+        cwd)
     blocks = jsonout['blocks']
 
     jsonlist = []
