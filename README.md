@@ -34,7 +34,7 @@ and basically can be implemented for any editor by regularly piping the current 
 --- as a fallback, watch a file for changes using inotify and pipe it to pmpm upon changes to get preview-on-save
 * to enable relative paths for images,
   the path of the currently edited file can be passed along to pmpm
-  by adding a first line `<!-- filepath: /the/path/to/this.md -->`
+  by adding a first line `<!-- filepath:/the/path/to/this.md -->`
   ([vim2pmpm][vim] does this automatically)
 * for __increased speed__,
   pmpm aims to make use of async where possible
@@ -171,7 +171,7 @@ bibliography: bib.bib
 link-citations: true
 
 # citation styles -- local or remote csl files can be selected
-# dozens of styles can be fonud at the the official repository
+# dozens of styles can be found at the the official repository
 # https://github.com/citation-style-language/styles
 # csl: https://raw.githubusercontent.com/citation-style-language/styles/master/apa-cv.csl
 # default is a chicago author date style

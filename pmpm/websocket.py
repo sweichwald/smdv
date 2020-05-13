@@ -3,6 +3,7 @@ import concurrent.futures
 from functools import lru_cache
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import websockets
@@ -17,7 +18,8 @@ EVENT_LOOP = asyncio.get_event_loop()
 
 DISTRIBUTING = None
 
-NAMED_PIPE = os.environ.get("XDG_RUNTIME_DIR", "/tmp") + "/pmpm_pipe"
+NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
+
 PIPE_LOST = asyncio.Event()
 
 
@@ -31,7 +33,7 @@ def run_websocket_server():
                                          "localhost",
                                          ARGS.port)
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
-    if not os.path.exists(NAMED_PIPE):
+    if not NAMED_PIPE.is_fifo():
         os.mkfifo(NAMED_PIPE)
     EVENT_LOOP.create_task(monitorpipe())
     EVENT_LOOP.run_forever()
@@ -80,26 +82,25 @@ async def new_pipe_content(instrlist):
         content = instr.decode()
         if content.startswith('<!-- filepath:'):
             lines = content.split('\n')
-            fpath = lines.pop(0)[14:-4]
-            cwd = fpath.rsplit('/', 1)[0] + '/'
+            # given path is relative to home or absolute
+            fpath = ARGS.home / lines.pop(0)[14:-4]
             content = '\n'.join(lines)
-            fpath.replace(ARGS.home, '')
         else:
-            fpath = "LIVE"
-            cwd = ARGS.home + '/'
+            fpath = ARGS.home / "LIVE"
         if DISTRIBUTING:
             DISTRIBUTING.cancel()
+        # absolute fpath
+        fpath = fpath.resolve()
         DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
             fpath,
-            content,
-            cwd))
+            content))
 
 
-async def distribute_new_content(fpath, content, cwd):
+async def distribute_new_content(fpath, content):
     try:
         message = {
-            "fpath": fpath,
-            "htmlblocks": await md2htmlblocks(content, cwd),
+            "fpath": str(fpath.relative_to(ARGS.home)),
+            "htmlblocks": await md2htmlblocks(content, fpath.parent),
             }
     except Exception as e:
         message = {
@@ -152,7 +153,7 @@ async def unregister_client(client: websockets.WebSocketServerProtocol):
 
 
 def readfile(fpath):
-    with open(fpath, 'r') as f:
+    with fpath.open('r') as f:
         content = f.read()
     return content
 
@@ -162,10 +163,10 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
     """ handle a message sent by one of the clients
     """
     global DISTRIBUTING
-    fpath = message
+    fpath = ARGS.home / message
     try:
         content = await EVENT_LOOP.run_in_executor(
-            None, readfile, ARGS.home + fpath)
+            None, readfile, fpath)
     except (FileNotFoundError, IsADirectoryError) as e:
         if DISTRIBUTING:
             DISTRIBUTING.cancel()
@@ -174,14 +175,11 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
             }))
         return
 
-    cwd = ARGS.home + fpath.rsplit('/', 1)[0] + '/'
-    fpath.replace(ARGS.home, '')
     if DISTRIBUTING:
         DISTRIBUTING.cancel()
     DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
         fpath,
-        content,
-        cwd))
+        content))
 
 
 # send updated body contents to javascript clients
@@ -226,7 +224,7 @@ def json2htmlblock(jsontxt, cwd, citeproc):
         stderr=subprocess.DEVNULL)
     stdout, stderr = proc.communicate(jsontxt.encode())
     html = urlRegex.sub(
-        f'\\1="file://{cwd}\\2"',
+        f'\\1="file://{cwd}/\\2"',
         stdout.decode())
     return [hash(html), html]
 

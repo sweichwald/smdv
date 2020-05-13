@@ -1,19 +1,19 @@
-import os
+from pathlib import Path
 from setuptools import setup
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = Path(__file__).parent
 
 
 def parse_requirements_file(filename):
-    with open(filename) as f:
+    with Path(BASE_DIR / filename).open('r') as f:
         return f.read().splitlines()
 
 
 if __name__ == "__main__":
     install_requires = parse_requirements_file("requirements.txt")
 
-    with open(os.path.join(BASE_DIR, "README.md")) as f:
+    with Path(BASE_DIR / 'README.md').open('r') as f:
         long_description = f.read()
 
     setup(

@@ -1,9 +1,10 @@
 import argparse
 import importlib
 import os
+from pathlib import Path
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = Path(__file__).parent
 
 
 class limport:
@@ -34,7 +35,7 @@ def parse_args(args=None) -> argparse.Namespace:
     parser.add_argument(
         "-H",
         "--home",
-        default=os.environ.get("PMPM_DEFAULT_HOME", os.path.expanduser("~")),
+        default=os.environ.get("PMPM_DEFAULT_HOME", "~"),
         help="set the root folder of the pmpm server",
     )
     parser.add_argument(
@@ -69,9 +70,8 @@ def parse_args(args=None) -> argparse.Namespace:
         help="stop the pmpm server (without doing anything else)",
     )
     parsed_args = parser.parse_args(args=args)
-    if parsed_args.home.endswith("/"):
-        parsed_args.home = parsed_args.home[:-1]
-    if not os.path.isdir(parsed_args.home):
+    parsed_args.home = Path(parsed_args.home).expanduser().resolve()
+    if not parsed_args.home.is_dir():
         raise ValueError(
             f"invalid home location given from pmpm: {parsed_args.home}")
     return parsed_args
