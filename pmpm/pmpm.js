@@ -133,9 +133,7 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
         if(!prevChild)
             return curChild;
         if(!curChild.isEqualNode(prevChild)) {
-            if(curChild.nodeType != Node.ELEMENT_NODE)
-                return curChild.parentNode;
-            else if(!curChild.childNodes.length)
+            if(!curChild.childNodes.length)
                 return curChild;
             else
                 return findFirstChangedChild(curChild.childNodes, prevChild.childNodes);
@@ -152,6 +150,8 @@ function footnoteClickEvent(event)
     if(!a)
         return true;
 
+    // Push state so browser back button jumps to previous position
+    history.pushState(history.state, fpath);
     window.scrollTo({top: a._footnoteHref.getBoundingClientRect().top + window.pageYOffset});
     return false;
 }
@@ -297,8 +297,11 @@ function updateBodyFromBlocks(contentnew)
 
         // scroll first changed block into view
         // TODO: Delay until async katex / viz rendering is done?
-        if(scrollTargetCompare && scrollTarget.childNodes.length)
+        if(scrollTargetCompare && scrollTarget.childNodes.length) {
             scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
+            if(scrollTarget.nodeType != Node.ELEMENT_NODE)
+                scrollTarget = scrollTarget.parentNode;
+        }
         window.scrollTo({top:
             scrollTarget.getBoundingClientRect().top +
             window.pageYOffset - window.innerHeight / 5})
@@ -352,13 +355,13 @@ async function initWebsocket()
         updateBodyFromBlocks(message.htmlblocks);
 
         // change browser url
-        const url = window.location.pathname + "?fpath=" + encodeURIComponent(message.fpath);
-        if (message.fpath !== "" && message.fpath != fpath) {
+        if (message.fpath != fpath) {
+            const url = "?fpath=" + encodeURIComponent(message.fpath);
             fpath = message.fpath;
             window.document.title = 'pmpm - '+fpath;
-            history.pushState({fpath:fpath}, url, url);
+            history.pushState({fpath:fpath}, fpath, url);
         } else {
-            history.replaceState({fpath:fpath}, url, url);
+            history.replaceState({fpath:fpath}, fpath);
         }
 
         // hide status, if still shown from reconnect
@@ -384,13 +387,19 @@ async function getWebsocket()
     return _websocket;
 }
 
-window.onpopstate = history.onpushstate = function (event) {
+window.onpopstate = function (event) {
 
     // Don't do anything on scroll to footnotes
     if(event.state === null)
         return;
 
-    fpath = event.state.fpath;
+    const newFpath = event.state.fpath;
+
+    // Don't reload already open fpath when e.g. only scrolled back from footnotes
+    if(newFpath == fpath)
+        return;
+
+    fpath = newFpath;
     window.document.title = 'pmpm - '+fpath;
     getWebsocket().then((websocket) => websocket.send(fpath));
 };
