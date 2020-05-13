@@ -142,6 +142,21 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
     return currentChildNodes[nchildren-1];
 }
 
+// Load local links to .md files directly in this pmpm instance
+// called for local src/href attributes, see websocket.py
+function localLinkClickEvent(el)
+{
+    if(el.tagName != 'A')
+        return true;
+
+    const newFullFpath = el.href.slice(7);
+    if(!newFullFpath.endsWith('.md'))
+        return true;
+
+    getWebsocket().then((websocket) => websocket.send(newFullFpath));
+    return false;
+}
+
 function footnoteClickEvent(event)
 {
     let a = event.target;

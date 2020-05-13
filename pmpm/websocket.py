@@ -224,9 +224,8 @@ def json2htmlblock(jsontxt, cwd, outtype):
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     stdout, stderr = proc.communicate(jsontxt.encode())
-    # TODO: local .md files --> pmpm.html?fpath=...
     html = urlRegex.sub(
-        f'\\1="file://{cwd}/\\2"',
+        f'\\1="file://{cwd}/\\2" onclick="return localLinkClickEvent(this);"',
         stdout.decode())
     return [hash(html), html]
 
