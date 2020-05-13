@@ -133,9 +133,7 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
         if(!prevChild)
             return curChild;
         if(!curChild.isEqualNode(prevChild)) {
-            if(curChild.nodeType != Node.ELEMENT_NODE)
-                return curChild.parentNode;
-            else if(!curChild.childNodes.length)
+            if(!curChild.childNodes.length)
                 return curChild;
             else
                 return findFirstChangedChild(curChild.childNodes, prevChild.childNodes);
@@ -297,8 +295,11 @@ function updateBodyFromBlocks(contentnew)
 
         // scroll first changed block into view
         // TODO: Delay until async katex / viz rendering is done?
-        if(scrollTargetCompare && scrollTarget.childNodes.length)
+        if(scrollTargetCompare && scrollTarget.childNodes.length) {
             scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
+            if(scrollTarget.nodeType != Node.ELEMENT_NODE)
+                scrollTarget = scrollTarget.parentNode;
+        }
         window.scrollTo({top:
             scrollTarget.getBoundingClientRect().top +
             window.pageYOffset - window.innerHeight / 5})
