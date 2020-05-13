@@ -223,6 +223,7 @@ def json2htmlblock(jsontxt, cwd, citeproc):
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     stdout, stderr = proc.communicate(jsontxt.encode())
+    # TODO: local .md files --> pmpm.html?fpath=...
     html = urlRegex.sub(
         f'\\1="file://{cwd}/\\2"',
         stdout.decode())
