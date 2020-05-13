@@ -155,20 +155,32 @@ and supported are also things like
 * [@doe1999{ii, A, D-Z}, with a suffix], and
 * [@alice20, {pp. iv, vi-xi, (xv)-(xvii)} with suffix here].
 
-End the document with your heading of choice for the reference list,
-which will be added at the end of the document.
+The reference section can be placed anywhere in the document by
+placing the placeholder divs accordingly:
 
-# References
+::: {#refs}
+:::
+
+or
+
+<div id="refs"></div>
+
+Otherwise, it will, per default, just be added at the end.
 
 ---
 # YAML meta block (anywhere in the md file, multiple blocks possible)
 
 # .bib file (absolute path or relative to the md file)
 bibliography: bib.bib
-# pmpm can currently handle only 1 bib file (pandoc can generally handle more)
 
 # whether citations are hyperlinked to bib entries (default: false)
 link-citations: true
+
+# the bibliography will be added at the end or in div#refs; to suppress, use
+# suppress-bibliography: true
+
+reference-section-title: References
+# is ignored, if the bibliography is placed explicitly with div#refs
 
 # citation styles -- local or remote csl files can be selected
 # dozens of styles can be found at the the official repository

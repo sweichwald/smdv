@@ -199,7 +199,10 @@ async def send_message_to_all_js_clients(message):
 def md2json(content):
     proc = subprocess.Popen(
         ["pandoc",
-         "--from", "markdown+emoji", "--to", "json", "--"+ARGS.math],
+         "--from", "markdown+emoji",
+         "--to", "json",
+         "--filter", "pandoc-citeproc",
+         "--"+ARGS.math],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
@@ -211,11 +214,9 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd, citeproc):
+def json2htmlblock(jsontxt, cwd):
     call = ["pandoc",
             "--from", "json", "--to", "html5", "--"+ARGS.math]
-    if citeproc:
-        call.extend(["--filter", "pandoc-citeproc"])
     proc = subprocess.Popen(
         call,
         cwd=cwd,
@@ -230,63 +231,14 @@ def json2htmlblock(jsontxt, cwd, citeproc):
     return [hash(html), html]
 
 
-async def jsonlist2htmlblocks(jsontxts, cwd, citeproc):
+async def jsonlist2htmlblocks(jsontxts, cwd):
     blocking_tasks = [
         EVENT_LOOP.run_in_executor(None,
                                    json2htmlblock,
                                    jsontxt,
-                                   cwd,
-                                   citeproc)
+                                   cwd)
         for jsontxt in jsontxts]
     return await asyncio.gather(*blocking_tasks)
-
-
-def item_generator(json_input, lookup_key):
-    if isinstance(json_input, dict):
-        for k, v in json_input.items():
-            if k == lookup_key:
-                yield v
-            else:
-                yield from item_generator(v, lookup_key)
-    elif isinstance(json_input, list):
-        for item in json_input:
-            yield from item_generator(item, lookup_key)
-
-
-@lru_cache(maxsize=LRU_CACHE_SIZE)
-def bibliography(blocks, cwd, bibfile, csl):
-    # Collect the cite-keys while keeping the order and
-    # dropping duplicates
-    cites = dict.fromkeys(
-        item_generator(json.loads(blocks), "citationId")).keys()
-    bibcontent = ("---\n"
-                  f"bibliography: {bibfile}\n"
-                  f"csl: {csl}\n"
-                  "nocite: |\n"
-                  f"  @{', @'.join(cites)}\n"
-                  "---\n")
-    proc = subprocess.Popen(
-        ["pandoc",
-         "--filter", "pandoc-citeproc",
-         "--from", "markdown+emoji", "--to", "html5", "--"+ARGS.math],
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(bibcontent.encode())
-    html = stdout.decode()
-    return hash(html), html
-
-
-async def getbibliography(blocks, cwd, bibfile, csl):
-    return await asyncio.gather(
-        EVENT_LOOP.run_in_executor(
-            None,
-            bibliography,
-            json.dumps(blocks),
-            cwd,
-            bibfile,
-            csl))
 
 
 async def md2htmlblocks(content, cwd) -> str:
@@ -305,30 +257,12 @@ async def md2htmlblocks(content, cwd) -> str:
         content)
     blocks = jsonout['blocks']
 
-    citeproc = 'bibliography' in jsonout['meta']
-    if citeproc:
-        # suppress individual block bibliographies
-        jsonout['meta']['suppress-bibliography'] = {'t': 'MetaBool', 'c': True}
-        try:
-            csl = jsonout['meta']['csl']['c'][0]['c']
-        except KeyError:
-            csl = ''
-        # get bibliography separately
-        bibhtml = await getbibliography(
-            blocks,
-            cwd,
-            jsonout['meta']['bibliography']['c'][0]['c'],
-            csl)
-
     jsonlist = []
     for bid, b in enumerate(blocks):
         jsonout['blocks'] = [b]
         jsonstr = json.dumps(jsonout)
         jsonlist.append(jsonstr)
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, citeproc)
-
-    if citeproc:
-        htmlblocks.extend(bibhtml)
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd)
 
     return htmlblocks
