@@ -167,21 +167,21 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
     """ handle a message sent by one of the clients
     """
     global DISTRIBUTING
+    if DISTRIBUTING:
+        DISTRIBUTING.cancel()
+
     fpath = ARGS.home / message
     try:
-        content = await EVENT_LOOP.run_in_executor(
-            None, readfile, fpath)
+        content = await EVENT_LOOP.run_in_executor(None,
+                                                   readfile,
+                                                   fpath)
     except (FileNotFoundError, IsADirectoryError) as e:
-        if DISTRIBUTING:
-            DISTRIBUTING.cancel()
         DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
             "error": str(e)
             }))
         traceback.print_exc()
         return
 
-    if DISTRIBUTING:
-        DISTRIBUTING.cancel()
     DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
         fpath,
         content))
