@@ -103,6 +103,8 @@ async def distribute_new_content(fpath, content):
             "fpath": str(os.path.relpath(fpath, ARGS.home)),
             "htmlblocks": await md2htmlblocks(content, fpath.parent),
             }
+    except concurrent.futures.CancelledError:
+        return
     except Exception as e:
         message = {
             "error": str(e)
