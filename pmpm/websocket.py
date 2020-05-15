@@ -206,7 +206,6 @@ def md2json(content, cwd):
         ["pandoc",
          "--from", "markdown+emoji",
          "--to", "json",
-         "--filter", "pandoc-citeproc",
          "--"+ARGS.math],
         cwd=cwd,
         stdin=subprocess.PIPE,
@@ -220,9 +219,11 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd, outtype):
+def json2htmlblock(jsontxt, cwd, outtype, citeproc):
     call = ["pandoc",
             "--from", "json", "--to", outtype, "--"+ARGS.math]
+    if citeproc:
+        call.extend(["--filter", "pandoc-citeproc"])
     proc = subprocess.Popen(
         call,
         cwd=cwd,
@@ -236,15 +237,60 @@ def json2htmlblock(jsontxt, cwd, outtype):
     return [hash(html), html]
 
 
-async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
+async def jsonlist2htmlblocks(jsontxts, cwd, outtype, citeproc):
     blocking_tasks = [
         EVENT_LOOP.run_in_executor(None,
                                    json2htmlblock,
                                    jsontxt,
                                    cwd,
-                                   outtype)
+                                   outtype,
+                                   citeproc)
         for jsontxt in jsontxts]
     return await asyncio.gather(*blocking_tasks)
+
+
+def item_generator(json_input, lookup_key):
+    if isinstance(json_input, dict):
+        for k, v in json_input.items():
+            if k == lookup_key:
+                yield v
+            else:
+                yield from item_generator(v, lookup_key)
+    elif isinstance(json_input, list):
+        for item in json_input:
+            yield from item_generator(item, lookup_key)
+
+
+@lru_cache(maxsize=LRU_CACHE_SIZE)
+def bibliography(blocks, cwd, bibfile):
+    cites = dict.fromkeys(
+        item_generator(json.loads(blocks), "citationId")).keys()
+    bibcontent = ("---\n"
+                  f"bibliography: {bibfile}\n"
+                  "nocite: |\n"
+                  f"  @{', @'.join(cites)}\n"
+                  "---\n")
+    proc = subprocess.Popen(
+        ["pandoc",
+         "--filter", "pandoc-citeproc",
+         "--from", "markdown+emoji", "--to", "html5", "--"+ARGS.math],
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(bibcontent.encode())
+    html = stdout.decode()
+    return hash(html), html
+
+
+async def getbibliography(blocks, cwd, bibfile):
+    return await asyncio.gather(
+        EVENT_LOOP.run_in_executor(
+            None,
+            bibliography,
+            json.dumps(blocks),
+            cwd,
+            bibfile))
 
 
 async def md2htmlblocks(content, cwd) -> str:
@@ -264,6 +310,18 @@ async def md2htmlblocks(content, cwd) -> str:
         cwd)
     blocks = jsonout['blocks']
 
+    # Workaround -- md2json with `--filter pandoc-citeproc` is slooow
+    # TODO: optimise and elegantify the bib handling
+    citeproc = 'bibliography' in jsonout['meta']
+    if citeproc:
+        # suppress individual block bibliographies
+        jsonout['meta']['suppress-bibliography'] = {'t': 'MetaBool', 'c': True}
+        # get bibliography separately
+        bibhtml = await getbibliography(
+            blocks,
+            cwd,
+            jsonout['meta']['bibliography']['c'][0]['c'])
+
     jsonlist = []
     for bid, b in enumerate(blocks):
         jsonout['blocks'] = [b]
@@ -274,6 +332,9 @@ async def md2htmlblocks(content, cwd) -> str:
     if content.startswith("<!-- revealjs -->\n"):
         outtype = "revealjs"
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype)
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype, citeproc)
+
+    if citeproc:
+        htmlblocks.extend(bibhtml)
 
     return htmlblocks
