@@ -18,6 +18,7 @@ JSCLIENTS = set()
 EVENT_LOOP = asyncio.get_event_loop()
 
 DISTRIBUTING = None
+LATEST_META_CWD = None
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
 
@@ -79,6 +80,8 @@ async def new_pipe_content(instrlist):
     global DISTRIBUTING
     instr = b''.join(instrlist)
     if instr != b'':
+        if DISTRIBUTING:
+            DISTRIBUTING.cancel()
         # filepath passed along
         content = instr.decode()
         if content.startswith('<!-- filepath:'):
@@ -88,8 +91,6 @@ async def new_pipe_content(instrlist):
             content = '\n'.join(lines)
         else:
             fpath = ARGS.home / "LIVE"
-        if DISTRIBUTING:
-            DISTRIBUTING.cancel()
         # absolute fpath
         fpath = fpath.resolve()
         DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
@@ -100,7 +101,7 @@ async def new_pipe_content(instrlist):
 async def distribute_new_content(fpath, content):
     try:
         message = {
-            "fpath": str(os.path.relpath(fpath, ARGS.home)),
+            "filepath": str(os.path.relpath(fpath, ARGS.home)),
             "htmlblocks": await md2htmlblocks(content, fpath.parent),
             }
     except concurrent.futures.CancelledError:
@@ -167,24 +168,26 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
     """ handle a message sent by one of the clients
     """
     global DISTRIBUTING
-    if DISTRIBUTING:
-        DISTRIBUTING.cancel()
 
-    fpath = ARGS.home / message
-    try:
-        content = await EVENT_LOOP.run_in_executor(None,
-                                                   readfile,
-                                                   fpath)
-    except (FileNotFoundError, IsADirectoryError) as e:
-        DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
-            "error": str(e)
-            }))
-        traceback.print_exc()
-        return
-
-    DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
-        fpath,
-        content))
+    if message.startswith('filepath:'):
+        if DISTRIBUTING:
+            DISTRIBUTING.cancel()
+        fpath = ARGS.home / message[9:]
+        try:
+            content = await EVENT_LOOP.run_in_executor(None,
+                                                    readfile,
+                                                    fpath)
+        except (FileNotFoundError, IsADirectoryError) as e:
+            DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
+                "error": str(e)
+                }))
+            traceback.print_exc()
+            return
+        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
+            fpath,
+            content))
+    elif message.startswith('citeproc:') and LATEST_META_CWD:
+        EVENT_LOOP.run_in_executor(None, citeproc, message[9:])
 
 
 # send updated body contents to javascript clients
@@ -219,11 +222,9 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd, outtype, citeproc):
+def json2htmlblock(jsontxt, cwd, outtype):
     call = ["pandoc",
             "--from", "json", "--to", outtype, "--"+ARGS.math]
-    if citeproc:
-        call.extend(["--filter", "pandoc-citeproc"])
     proc = subprocess.Popen(
         call,
         cwd=cwd,
@@ -237,62 +238,35 @@ def json2htmlblock(jsontxt, cwd, outtype, citeproc):
     return [hash(html), html]
 
 
-async def jsonlist2htmlblocks(jsontxts, cwd, outtype, citeproc):
+async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
     blocking_tasks = [
         EVENT_LOOP.run_in_executor(None,
                                    json2htmlblock,
                                    jsontxt,
                                    cwd,
-                                   outtype,
-                                   citeproc)
+                                   outtype)
         for jsontxt in jsontxts]
     return await asyncio.gather(*blocking_tasks)
 
 
-def item_generator(json_input, lookup_key):
-    if isinstance(json_input, dict):
-        for k, v in json_input.items():
-            if k == lookup_key:
-                yield v
-            else:
-                yield from item_generator(v, lookup_key)
-    elif isinstance(json_input, list):
-        for item in json_input:
-            yield from item_generator(item, lookup_key)
+#@lru_cache(maxsize=LRU_CACHE_SIZE)
+def citeproc(citerequest):
+    global LATEST_META_CWD
 
+    meta, cwd = LATEST_META_CWD
 
-@lru_cache(maxsize=LRU_CACHE_SIZE)
-def bibliography(blocks, cwd, bibfile):
-    # Collect the cite-keys while keeping the order and
-    # dropping duplicates
-    cites = dict.fromkeys(
-        item_generator(json.loads(blocks), "citationId")).keys()
-    bibcontent = ("---\n"
-                  f"bibliography: {bibfile}\n"
-                  "nocite: |\n"
-                  f"  @{', @'.join(cites)}\n"
-                  "---\n")
-    proc = subprocess.Popen(
-        ["pandoc",
-         "--filter", "pandoc-citeproc",
-         "--from", "markdown+emoji", "--to", "html5", "--"+ARGS.math],
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(bibcontent.encode())
-    html = stdout.decode()
-    return hash(html), html
-
-
-async def getbibliography(blocks, cwd, bibfile):
-    return await asyncio.gather(
-        EVENT_LOOP.run_in_executor(
-            None,
-            bibliography,
-            json.dumps(blocks),
-            cwd,
-            bibfile))
+    # req = json.loads(citerequest)
+    # assume both are ordered lists
+    # if the latter is empty (or LATEST_META sets suppress-bibliography)
+    # no bibliography will be sent
+    req = {
+        'citations': ['[@item1]', '[@item1,@item2]'],
+        'items':  ['@item1', '@item2'],
+    }
+    return [
+        ['(it1, 2020)', '(Bob & Kim; both 2020)'],
+        '<bibliography>'
+        ]
 
 
 async def md2htmlblocks(content, cwd) -> str:
@@ -305,6 +279,8 @@ async def md2htmlblocks(content, cwd) -> str:
         html: str: the resulting html
 
     """
+    global LATEST_META_CWD
+
     jsonout = await EVENT_LOOP.run_in_executor(
         None,
         md2json,
@@ -312,17 +288,9 @@ async def md2htmlblocks(content, cwd) -> str:
         cwd)
     blocks = jsonout['blocks']
 
-    # Workaround -- md2json with `--filter pandoc-citeproc` is slooow
-    # TODO: optimise and elegantify the bib handling
-    citeproc = 'bibliography' in jsonout['meta']
-    if citeproc:
-        # suppress individual block bibliographies
-        jsonout['meta']['suppress-bibliography'] = {'t': 'MetaBool', 'c': True}
-        # get bibliography separately
-        bibhtml = await getbibliography(
-            blocks,
-            cwd,
-            jsonout['meta']['bibliography']['c'][0]['c'])
+    # FLR: md2json with `--filter pandoc-citeproc` is slooow
+    # thus this workaround to speed things up
+    LATEST_META_CWD = [jsonout['meta'], cwd]
 
     jsonlist = []
     for bid, b in enumerate(blocks):
@@ -334,9 +302,6 @@ async def md2htmlblocks(content, cwd) -> str:
     if content.startswith("<!-- revealjs -->\n"):
         outtype = "revealjs"
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype, citeproc)
-
-    if citeproc:
-        htmlblocks.extend(bibhtml)
+    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype)
 
     return htmlblocks

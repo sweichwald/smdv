@@ -73,7 +73,7 @@ const children = container.children;
 const hashAttr = 'data-hash';
 const footnotes = document.getElementById('footnotes');
 const footnotesChildren = footnotes.children;
-let fpath = (new URLSearchParams(window.location.search)).get('fpath');
+let fpath = (new URLSearchParams(window.location.search)).get('filepath');
 
 
 // body
@@ -153,7 +153,7 @@ function localLinkClickEvent(el)
     if(!newFullFpath.endsWith('.md'))
         return true;
 
-    getWebsocket().then((websocket) => websocket.send(newFullFpath));
+    getWebsocket().then((websocket) => websocket.send('filepath:' + newFullFpath));
     return false;
 }
 
@@ -196,7 +196,7 @@ function extractFootnotes(newEl, newFn)
         // Do not set special ids and hrefs. Otherwise, the automatic
         // change detection in findFirstChangedChild() may just always
         // detect the first footnote.
-        // But: attributes like _footenoteHref and _footnoteAref 
+        // But: attributes like _footenoteHref and _footnoteAref
         // are ignored by isEqualNode(), so we use them and do
         // scrolling in our own onclick event handler.
         li.removeAttribute('id'); // not unique
@@ -370,9 +370,9 @@ async function initWebsocket()
         updateBodyFromBlocks(message.htmlblocks);
 
         // change browser url
-        if (message.fpath != fpath) {
-            const url = "?fpath=" + encodeURIComponent(message.fpath);
-            fpath = message.fpath;
+        if (message.filepath != fpath) {
+            const url = "?filepath=" + encodeURIComponent(message.filepath);
+            fpath = message.filepath;
             window.document.title = 'pmpm - '+fpath;
             history.pushState({fpath:fpath}, fpath, url);
         } else {
@@ -416,7 +416,7 @@ window.onpopstate = function (event) {
 
     fpath = newFpath;
     window.document.title = 'pmpm - '+fpath;
-    getWebsocket().then((websocket) => websocket.send(fpath));
+    getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
 };
 
 // Load websocket
@@ -425,7 +425,7 @@ initWebsocket();
 // Load initial document if any
 if(fpath && fpath !== 'LIVE') {
     window.document.title = 'pmpm - '+fpath;
-    getWebsocket().then((websocket) => websocket.send(fpath));
+    getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
 } else {
     // When refreshing the page, it may be irritatingly empty --> show this
     getWebsocket().then((_) => showStatusInfo('Just connected to '+websocketUrl+'. Pipe something to pmpm ;-)'));
