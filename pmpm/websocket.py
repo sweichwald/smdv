@@ -263,6 +263,8 @@ def item_generator(json_input, lookup_key):
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
 def bibliography(blocks, cwd, bibfile):
+    # Collect the cite-keys while keeping the order and
+    # dropping duplicates
     cites = dict.fromkeys(
         item_generator(json.loads(blocks), "citationId")).keys()
     bibcontent = ("---\n"
