@@ -75,3 +75,15 @@ def parse_args(args=None) -> argparse.Namespace:
         raise ValueError(
             f"invalid home location given from pmpm: {parsed_args.home}")
     return parsed_args
+
+
+def citeblock_generator(json_input, lookup_key):
+    if isinstance(json_input, dict):
+        if json_input.get("t", False) == "Cite":
+            yield {"t": "Para", "c": [json_input]}
+        else:
+            for k, v in json_input.items():
+                yield from citeblock_generator(v, lookup_key)
+    elif isinstance(json_input, list):
+        for item in json_input:
+            yield from citeblock_generator(item, lookup_key)

@@ -1,4 +1,5 @@
 import asyncio
+from collections import namedtuple
 import concurrent.futures
 from functools import lru_cache
 import json
@@ -8,8 +9,7 @@ import re
 import subprocess
 import traceback
 import websockets
-
-from .utils import parse_args
+from .utils import citeblock_generator, parse_args
 
 LRU_CACHE_SIZE = 8192
 
@@ -17,11 +17,10 @@ JSCLIENTS = set()
 
 EVENT_LOOP = asyncio.get_event_loop()
 
+CACHE = namedtuple('CACHE', ['cwd', 'json', 'htmlblocks'])
 DISTRIBUTING = None
-LATEST_META_CWD = None
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
-
 PIPE_LOST = asyncio.Event()
 
 
@@ -175,21 +174,23 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         fpath = ARGS.home / message[9:]
         try:
             content = await EVENT_LOOP.run_in_executor(None,
-                                                    readfile,
-                                                    fpath)
+                                                       readfile,
+                                                       fpath)
         except (FileNotFoundError, IsADirectoryError) as e:
-            DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
-                "error": str(e)
-                }))
+            DISTRIBUTING = EVENT_LOOP.create_task(
+                send_message_to_all_js_clients(
+                    {
+                        "error": str(e)
+                        }))
             traceback.print_exc()
             return
         DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
             fpath,
             content))
-    elif message.startswith('citeproc:') and LATEST_META_CWD:
-        if DISTRIBUTING:
-            DISTRIBUTING.cancel()
-        DISTRIBUTING = EVENT_LOOP.create_task(citeproc(message[9:]))
+    elif message.startswith('citeproc'):
+        EVENT_LOOP.run_in_executor(None,
+                                   citeproc,
+                                   client)
 
 
 # send updated body contents to javascript clients
@@ -204,6 +205,32 @@ async def send_message_to_all_js_clients(message):
         jsonmessage = json.dumps(message)
         for client in JSCLIENTS:
             EVENT_LOOP.create_task(client.send(jsonmessage))
+
+
+def citeproc(client):
+    # TODO: obviously need to speed up (lru_cache)
+    #       check for timestamp of involved bibfiles for lru_cache hashes
+    jsonf = dict(CACHE.json)
+    jsonf['blocks'] = list(citeblock_generator(CACHE.json['blocks'], 'Cite'))
+    call = ["pandoc",
+            "--from", "json", "--to", "html5",
+            "--filter", "pandoc-citeproc",
+            "--"+ARGS.math]
+    proc = subprocess.Popen(
+        call,
+        cwd=CACHE.cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(json.dumps(jsonf).encode())
+    # TODO: decide on format to communicate with js client
+    #       should key-val pairs be passed or just rely on ordering?
+    # stdout = <p><span class="citation" ....>...</span</p>
+    #          ...
+    #          <p><span class="citation" ....>...</span</p>
+    #          <div id=refs>...</div>
+    print(stdout.decode())
+    EVENT_LOOP.create_task(client.send(stdout.decode()))
 
 
 def md2json(content, cwd):
@@ -251,80 +278,6 @@ async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
     return await asyncio.gather(*blocking_tasks)
 
 
-@lru_cache(maxsize=LRU_CACHE_SIZE)
-def citeproc_cached(bibcontent, split_marker, cwd):
-    proc = subprocess.Popen(
-        ["pandoc",
-            "--filter", "pandoc-citeproc",
-            "--from", "markdown+emoji", "--to", "html5", "--"+ARGS.math],
-        cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(bibcontent.encode())
-
-    html = stdout.decode()
-    if split_marker:
-        html = html.split(split_marker)[1]
-
-    return html
-
-async def citeproc(citerequest):
-    global LATEST_META_CWD
-
-    meta, cwd = LATEST_META_CWD
-
-    try:
-        # req must be of the form
-        # req = {
-        #
-        #    'textcites': ['[@item1]', '[@item1,@item2]'],
-        #    'citekeys':  ['@item1', '@item2'],
-        # }
-        # assume both are ordered lists
-        # if the latter is empty (or LATEST_META sets suppress-bibliography)
-        # no bibliography will be sent
-        req = json.loads(citerequest)
-        bibfile = meta['bibliography']['c'][0]['c']
-        linkcitations = meta['link-citations']['c']
-        fakeTextcites = '\n\n'.join(req['textcites'])
-
-        # TODO: More efficient with json input?
-        if 'citekeys' in req:
-            fakeCitekeys = '\n\n@'.join(req['citekeys'])
-            bibcontent = ("---\n"
-                        f"bibliography: {bibfile}\n"
-                        f"link-citations: {linkcitations}\n"
-                        "suppress-bibliography: false\n"
-                        "---\n"
-                        f"@{fakeCitekeys}\n\n"
-                        "<!--CITEKEYSENDMARKER-->\n\n"
-                        f"{fakeTextcites}")
-            print(bibcontent)
-        else:
-            suppressbibliography = 'true';
-            bibcontent = ("---\n"
-                        f"bibliography: {bibfile}\n"
-                        f"link-citations: {linkcitations}\n"
-                        "suppress-bibliography: true\n"
-                        "---\n"
-                        f"{fakeTextcites}")
-            print(bibcontent)
-        message = citeproc_cached(
-            bibcontent,
-            '\n<!--CITEKEYSENDMARKER-->\n' if 'citekeys' in req else None,
-            cwd)
-    except concurrent.futures.CancelledError:
-        return
-    except Exception as e:
-        message = {
-            "error": str(e)
-            }
-        traceback.print_exc()
-    # TODO: Multi-clients are problematic, each will send their own citeproc request.
-    #       Send result just to the client who did the request?
-    asyncio.shield(send_message_to_all_js_clients(message))
-
 async def md2htmlblocks(content, cwd) -> str:
     """ convert markdown to html using pandoc markdown
 
@@ -335,7 +288,7 @@ async def md2htmlblocks(content, cwd) -> str:
         html: str: the resulting html
 
     """
-    global LATEST_META_CWD
+    global CACHE
 
     jsonout = await EVENT_LOOP.run_in_executor(
         None,
@@ -346,7 +299,8 @@ async def md2htmlblocks(content, cwd) -> str:
 
     # FLR: md2json with `--filter pandoc-citeproc` is slooow
     # thus this workaround to speed things up
-    LATEST_META_CWD = [jsonout['meta'], cwd]
+    CACHE.cwd = cwd
+    CACHE.json = dict(jsonout)
 
     jsonlist = []
     for bid, b in enumerate(blocks):
@@ -359,5 +313,7 @@ async def md2htmlblocks(content, cwd) -> str:
         outtype = "revealjs"
 
     htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype)
+
+    CACHE.htmlblocks = htmlblocks
 
     return htmlblocks
