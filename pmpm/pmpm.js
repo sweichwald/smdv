@@ -421,9 +421,9 @@ function updateBodyFromBlocks(contentnew)
                 for(const citekey of el._referenceCitekeys) {
                     if(_citekeyRefcounts[citekey] == 1) {
                         delete _citekeyRefcounts[citekey];
-                        // Remove this from references
+                        // Remove this from references, if present
                         const refEl = document.getElementById('ref-'+citekey);
-                        refEl.parentNode.removeChild(refEl);
+                        refEl?.parentNode.removeChild(refEl);
                     } else
                         _citekeyRefcounts[citekey]--;
                 }
