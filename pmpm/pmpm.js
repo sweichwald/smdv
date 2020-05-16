@@ -423,7 +423,8 @@ function updateBodyFromBlocks(contentnew)
                         delete _citekeyRefcounts[citekey];
                         // Remove this from references, if present
                         const refEl = document.getElementById('ref-'+citekey);
-                        refEl?.parentNode.removeChild(refEl);
+                        if(refEl)
+                            refEl.parentNode.removeChild(refEl);
                     } else
                         _citekeyRefcounts[citekey]--;
                 }
