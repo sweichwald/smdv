@@ -316,13 +316,19 @@ function citeprocResultEvent(message)
         return;
     }
 
-    // Replace reference list with new reference list
+    // Replace reference list with new reference list, if any
     const refList = div.querySelector('.references');
-    const oldRefList = document.getElementById('refs');
+    refList.id = 'pmpmRefs';
+    const oldRefList = document.getElementById('pmpmRefs');
     if(oldRefList)
-        references.replaceChild(refList, oldRefList);
-    else
-        references.appendChild(refList);
+        oldRefList.parentNode.removeChild(oldRefList);
+    if(refList) {
+        const refs = document.getElementById('refs');
+        if(refs)
+            refs.appendChild(refList);
+        else
+            references.appendChild(refList);
+    }
 
     console.log(performance.now(), 'citeproc done');
 }
