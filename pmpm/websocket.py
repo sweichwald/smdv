@@ -187,7 +187,9 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
             fpath,
             content))
     elif message.startswith('citeproc:') and LATEST_META_CWD:
-        EVENT_LOOP.run_in_executor(None, citeproc, message[9:])
+        if DISTRIBUTING:
+            DISTRIBUTING.cancel()
+        DISTRIBUTING = EVENT_LOOP.create_task(citeproc(message[9:]))
 
 
 # send updated body contents to javascript clients
@@ -249,25 +251,79 @@ async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
     return await asyncio.gather(*blocking_tasks)
 
 
-#@lru_cache(maxsize=LRU_CACHE_SIZE)
-def citeproc(citerequest):
+@lru_cache(maxsize=LRU_CACHE_SIZE)
+def citeproc_cached(bibcontent, split_marker, cwd):
+    proc = subprocess.Popen(
+        ["pandoc",
+            "--filter", "pandoc-citeproc",
+            "--from", "markdown+emoji", "--to", "html5", "--"+ARGS.math],
+        cwd=cwd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(bibcontent.encode())
+
+    html = stdout.decode()
+    if split_marker:
+        html = html.split(split_marker)[1]
+
+    return html
+
+async def citeproc(citerequest):
     global LATEST_META_CWD
 
     meta, cwd = LATEST_META_CWD
 
-    # req = json.loads(citerequest)
-    # assume both are ordered lists
-    # if the latter is empty (or LATEST_META sets suppress-bibliography)
-    # no bibliography will be sent
-    req = {
-        'citations': ['[@item1]', '[@item1,@item2]'],
-        'items':  ['@item1', '@item2'],
-    }
-    return [
-        ['(it1, 2020)', '(Bob & Kim; both 2020)'],
-        '<bibliography>'
-        ]
+    try:
+        # req must be of the form
+        # req = {
+        #
+        #    'textcites': ['[@item1]', '[@item1,@item2]'],
+        #    'citekeys':  ['@item1', '@item2'],
+        # }
+        # assume both are ordered lists
+        # if the latter is empty (or LATEST_META sets suppress-bibliography)
+        # no bibliography will be sent
+        req = json.loads(citerequest)
+        bibfile = meta['bibliography']['c'][0]['c']
+        linkcitations = meta['link-citations']['c']
+        fakeTextcites = '\n\n'.join(req['textcites'])
 
+        # TODO: More efficient with json input?
+        if 'citekeys' in req:
+            fakeCitekeys = '\n\n@'.join(req['citekeys'])
+            bibcontent = ("---\n"
+                        f"bibliography: {bibfile}\n"
+                        f"link-citations: {linkcitations}\n"
+                        "suppress-bibliography: false\n"
+                        "---\n"
+                        f"@{fakeCitekeys}\n\n"
+                        "<!--CITEKEYSENDMARKER-->\n\n"
+                        f"{fakeTextcites}")
+            print(bibcontent)
+        else:
+            suppressbibliography = 'true';
+            bibcontent = ("---\n"
+                        f"bibliography: {bibfile}\n"
+                        f"link-citations: {linkcitations}\n"
+                        "suppress-bibliography: true\n"
+                        "---\n"
+                        f"{fakeTextcites}")
+            print(bibcontent)
+        message = citeproc_cached(
+            bibcontent,
+            '\n<!--CITEKEYSENDMARKER-->\n' if 'citekeys' in req else None,
+            cwd)
+    except concurrent.futures.CancelledError:
+        return
+    except Exception as e:
+        message = {
+            "error": str(e)
+            }
+        traceback.print_exc()
+    # TODO: Multi-clients are problematic, each will send their own citeproc request.
+    #       Send result just to the client who did the request?
+    asyncio.shield(send_message_to_all_js_clients(message))
 
 async def md2htmlblocks(content, cwd) -> str:
     """ convert markdown to html using pandoc markdown
