@@ -230,7 +230,7 @@ def citeproc(client):
     #          <p><span class="citation" ....>...</span</p>
     #          <div id=refs>...</div>
     print(stdout.decode())
-    EVENT_LOOP.create_task(client.send(stdout.decode()))
+    EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
 
 
 def md2json(content, cwd):

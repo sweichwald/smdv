@@ -229,8 +229,7 @@ function extractFootnotes(newEl, newFn)
 
 function extractReferences(newEl)
 {
-    let haveNewCitekeys = false;
-    const newTextcites = [];
+    let hasNewTextCites = false;
     const referenceElements = [];
 
     for(const el of newEl.getElementsByClassName('citation')) {
@@ -238,82 +237,39 @@ function extractReferences(newEl)
         const textcite = el.textContent;
 
         // Save all used citekeys for this citation (in order!)
-        // This is for a faster builder of complete list of citekeys in whole document
         el._referenceCitekeys = citekeys;
 
         // Save textcite for later.
-        // This is for faster deletion of textcites cache
         el._referenceTextcite = textcite;
 
         // Update _citekeyRefcounts.
-        // This is to enable removing deleted references from reference list
         for(const citekey of citekeys) {
-            if(_citekeyRefcounts[citekey] === undefined) {
-                haveNewCitekeys = true;
+            if(_citekeyRefcounts[citekey] === undefined)
                 _citekeyRefcounts[citekey] = 1;
-            } else {
+            else
                 _citekeyRefcounts[citekey]++;
-            }
         }
 
         // If we know this textcite's html, directly use it
         // Otherwise, we have to request it from the websocket
+        // In any case, push this element into the textcitesCache
         const cache = _textcitesCache[textcite];
         if(cache === undefined) {
-            newTextcites.push(textcite);
+            hasNewTextCites = true;
             _textcitesCache[textcite] = {elements: [el]};
         } else {
             cache.elements.push(el);
-            if(cache.html !== undefined) {
-                // TODO: use cloneNode of a reference node rather than innerHTML
+            if(cache.html !== undefined)
                 el.innerHTML = cache.html;
-            }
         }
 
         referenceElements.push(el);
     }
 
     // Save all reference elements.
-    // This is for faster deletion of textcite cache in case a textcite is removed
     newEl._referenceElements = referenceElements;
 
-    return [haveNewCitekeys, newTextcites];
-}
-
-let _lastReferencesRequest;
-async function renderReferencesAsync(haveNewCitekeys, newTextcites)
-{
-    if(!newTextcites.length)
-        return;
-
-    console.log(performance.now(), 'rendering new textcites');
-
-    // Build request for new textcites
-    const textcites = [];
-    for(const blockTextcites of newTextcites)
-        textcites.push(blockTextcites);
-
-    const request = {textcites: Array.prototype.concat(...textcites)};
-
-    // Add request for complete new reference list if needed
-    if(haveNewCitekeys) {
-        const tmp = [];
-        for(const block of children) {
-            const referenceElements = block._referenceElements;
-            if(referenceElements !== undefined) {
-                for(const element of referenceElements)
-                    tmp.push(Array.prototype.concat(...element._referenceCitekeys));
-            }
-        }
-        request.citekeys = Array.prototype.concat(...tmp);
-    }
-
-    console.log(performance.now(), request);
-
-    // Do websocket request
-    const websocket = await getWebsocket();
-    _lastReferencesRequest = request;
-    websocket.send('citeproc:'+JSON.stringify(request));
+    return hasNewTextCites;
 }
 
 function citeprocResultEvent(message)
@@ -324,38 +280,49 @@ function citeprocResultEvent(message)
     const div = document.createElement('div');
     div.innerHTML = message;
 
-    // Find all textcites in result
+    // Update textcites
+    let i = 0;
+    const updatedTextcites = {};
     const citeprocCitations = div.getElementsByClassName('citation');
-    const requestedTextcites = _lastReferencesRequest.textcites;
-    if(citeprocCitations.length != requestedTextcites.length) {
+    for(const block of children) {
+        const referenceElements = block._referenceElements;
+        if(referenceElements === undefined)
+            continue;
+        for(const el of referenceElements) {
+            i++;
+            const textcite = el._referenceTextcite;
+            if(updatedTextcites[textcite])
+                continue;
+            updatedTextcites[textcite] = true;
+
+            // Update all with the same textcite, if HTML has changed
+            const html = citeprocCitations[i-1].innerHTML;
+            const textciteCache = _textcitesCache[textcite];
+            if(!textciteCache) {
+                // Can in principle happen due to async-ness of everything
+                showStatusWarning('Received citations for old request. Maybe try reloading?');
+                return;
+            }
+            if(textciteCache.html == html)
+                continue;
+            textciteCache.html = html;
+            for(const tmp of textciteCache.elements)
+                tmp.innerHTML = html;
+        }
+    }
+    if(i != citeprocCitations.length) {
         // Can in principle happen due to async-ness of everything
         showStatusWarning('Received citations for different request. Maybe try reloading?');
         return;
     }
-    for(let i = 0; i < citeprocCitations.length; i++) {
-        const textciteCache = _textcitesCache[requestedTextcites[i]];
-        if(!textciteCache) {
-            // Can in principle happen due to async-ness of everything
-            showStatusWarning('Received citations for old request. Maybe try reloading?');
-            return;
-        }
 
-        // TODO: Use cloneNode instead of innerHTML? (Be careful to copy _referenceCitekeys etc.!)
-        const html = citeprocCitations[i].innerHTML;
-        textciteCache.html = html;
-        for(const element of textciteCache.elements)
-            element.innerHTML = html;
-    }
-
-    // Replace reference list with new reference list, if any
+    // Replace reference list with new reference list
     const refList = div.querySelector('.references');
-    if(refList) {
-        const oldRefList = document.getElementById('refs');
-        if(oldRefList)
-            references.replaceChild(refList, oldRefList);
-        else
-            references.appendChild(refList);
-    }
+    const oldRefList = document.getElementById('refs');
+    if(oldRefList)
+        references.replaceChild(refList, oldRefList);
+    else
+        references.appendChild(refList);
 
     console.log(performance.now(), 'citeproc done');
 }
@@ -371,8 +338,7 @@ function updateBodyFromBlocks(contentnew)
     let scrollTargetCompare;
     let mustRenumber = false;
     let renumberNum;
-    let newTextcites = [];
-    let haveNewCitekeys = false;
+    let hasNewTextCites = false;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -417,11 +383,8 @@ function updateBodyFromBlocks(contentnew)
                 mustRenumber = true;
 
             // Check references
-            const [haveNewCitekeysInBlock, newBlockTextcites] = extractReferences(newEl);
-            if(newBlockTextcites.length) {
-                newTextcites.push(newBlockTextcites);
-                haveNewCitekeys = haveNewCitekeys || haveNewCitekeysInBlock;
-            }
+            if(extractReferences(newEl))
+                hasNewTextCites = true;
 
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
@@ -501,7 +464,8 @@ function updateBodyFromBlocks(contentnew)
     console.log(performance.now(), 'end updateBody');
 
     // Render references asynchronously
-    renderReferencesAsync(haveNewCitekeys, newTextcites);
+    if(hasNewTextCites)
+        getWebsocket().then(websocket => websocket.send('citeproc'));
 }
 
 // websockets
