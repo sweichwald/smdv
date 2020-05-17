@@ -30,8 +30,6 @@ def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args()
-    EVENT_LOOP.set_default_executor(
-        concurrent.futures.ThreadPoolExecutor(max_workers=None))
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
@@ -234,17 +232,17 @@ def citeproc(client):
     EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
 
 
-def md2json(content, cwd):
-    proc = subprocess.Popen(
-        ["pandoc",
-         "--from", "markdown+emoji",
-         "--to", "json",
-         "--"+ARGS.math],
+async def md2json(content, cwd):
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        *["pandoc",
+          "--from", "markdown+emoji",
+          "--to", "json",
+          "--"+ARGS.math],
         cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(content.encode())
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(content.encode())
     return json.loads(stdout)
 
 
@@ -280,11 +278,7 @@ async def md2htmlblocks(content, cwd) -> str:
     """
     global CACHE
 
-    jsonout = await EVENT_LOOP.run_in_executor(
-        None,
-        md2json,
-        content,
-        cwd)
+    jsonout = await md2json(content, cwd)
 
     # FLR: md2json with `--filter pandoc-citeproc` is slooow
     # thus this workaround to speed things up
