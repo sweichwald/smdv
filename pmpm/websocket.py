@@ -11,7 +11,6 @@ import traceback
 import uvloop
 import websockets
 from .utils import citeblock_generator, parse_args
-
 LRU_CACHE_SIZE = 8192
 
 JSCLIENTS = set()
@@ -297,8 +296,7 @@ async def md2htmlblocks(content, cwd) -> str:
                     "pandoc-api-version": jsonout['pandoc-api-version']})
         for j in jsonout['blocks'])
 
-    htmlblocks = await asyncio.gather(*(
-        json2htmlblock(j, cwd, outtype)
-        for j in jsonlist))
+    htmlblocks = [await json2htmlblock(j, cwd, outtype)
+                  for j in jsonlist]
 
     return htmlblocks
