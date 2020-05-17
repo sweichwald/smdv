@@ -281,6 +281,11 @@ async def md2htmlblocks(content, cwd) -> str:
     """
     global CACHE
 
+    outtype = "html5"
+    if content.startswith("<!-- revealjs -->\n"):
+        content = content[18:]
+        outtype = "revealjs"
+
     jsonout = await md2json(content, cwd)
 
     CACHE.cwd = cwd
@@ -291,10 +296,6 @@ async def md2htmlblocks(content, cwd) -> str:
                     "meta": {},
                     "pandoc-api-version": jsonout['pandoc-api-version']})
         for j in jsonout['blocks'])
-
-    outtype = "html5"
-    if content.startswith("<!-- revealjs -->\n"):
-        outtype = "revealjs"
 
     htmlblocks = await asyncio.gather(*(
         json2htmlblock(j, cwd, outtype)
