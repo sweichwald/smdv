@@ -1,7 +1,7 @@
 import asyncio
 from async_lru import alru_cache
 from collections import namedtuple
-import concurrent.futures
+from itertools import count
 import json
 import os
 from pathlib import Path
@@ -18,8 +18,10 @@ JSCLIENTS = set()
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 EVENT_LOOP = asyncio.get_event_loop()
 
-CACHE = namedtuple('CACHE', ['cwd', 'json', 'htmlblocks'])
-DISTRIBUTING = None
+CACHE = namedtuple('CACHE', ['cwd', 'json'])
+
+QUEUE = None
+PROCESSING = False
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
 PIPE_LOST = asyncio.Event()
@@ -63,53 +65,93 @@ class ReadPipeProtocol(asyncio.Protocol):
         super(ReadPipeProtocol, self).data_received(data)
         self._received.append(data)
         if data.endswith(b'\0'):
-            EVENT_LOOP.create_task(new_pipe_content(self._received))
-            self._received = []
+            self._queue()
 
     def eof_received(self):
-        EVENT_LOOP.create_task(new_pipe_content(self._received))
+        self._queue()
+
+    def _queue(self):
+        global QUEUE
+        QUEUE = ('pipe', self._received)
+        EVENT_LOOP.create_task(processqueue())
+        self._received = []
 
     def connection_lost(self, transport):
         super(ReadPipeProtocol, self).connection_lost(transport)
         PIPE_LOST.set()
 
 
+async def progressbar():
+    for k in count(1):
+        await asyncio.sleep(.382)
+        EVENT_LOOP.create_task(
+            send_message_to_all_js_clients(
+                {
+                    "status": ' · '*k
+                    }))
+
+
+async def processqueue():
+    global PROCESSING
+    global QUEUE
+    if not PROCESSING and QUEUE:
+        PROCESSING = EVENT_LOOP.create_task(progressbar())
+        q = QUEUE
+        QUEUE = None
+        if q[0] == 'pipe':
+            await new_pipe_content(q[1])
+        elif q[0] == 'filepath':
+            await new_filepath_request(q[1])
+        PROCESSING.cancel()
+        await asyncio.sleep(.382)
+        PROCESSING = False
+        EVENT_LOOP.create_task(processqueue())
+
+
 async def new_pipe_content(instrlist):
-    global DISTRIBUTING
     instr = b''.join(instrlist)
-    if instr != b'':
-        if DISTRIBUTING:
-            DISTRIBUTING.cancel()
-        # filepath passed along
-        content = instr.decode()
-        if content.startswith('<!-- filepath:'):
-            lines = content.split('\n')
-            # given path is relative to home or absolute
-            fpath = ARGS.home / lines.pop(0)[14:-4]
-            content = '\n'.join(lines)
-        else:
-            fpath = ARGS.home / "LIVE"
-        # absolute fpath
-        fpath = fpath.resolve()
-        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
-            fpath,
-            content))
+    # filepath passed along
+    content = instr.decode()
+    if content.startswith('<!-- filepath:'):
+        lines = content.split('\n')
+        # given path is relative to home or absolute
+        fpath = ARGS.home / lines.pop(0)[14:-4]
+        content = '\n'.join(lines)
+    else:
+        fpath = ARGS.home / "LIVE"
+    # absolute fpath
+    fpath = fpath.resolve()
+    await process_new_content(fpath, content)
 
 
-async def distribute_new_content(fpath, content):
+async def new_filepath_request(fpath):
+    try:
+        content = await EVENT_LOOP.run_in_executor(None,
+                                                   readfile,
+                                                   fpath)
+    except (FileNotFoundError, IsADirectoryError) as e:
+        EVENT_LOOP.create_task(
+            send_message_to_all_js_clients(
+                {
+                    "error": str(e)
+                    }))
+        traceback.print_exc()
+        return
+    await process_new_content(fpath, content)
+
+
+async def process_new_content(fpath, content):
     try:
         message = {
             "filepath": str(os.path.relpath(fpath, ARGS.home)),
             "htmlblocks": await md2htmlblocks(content, fpath.parent),
             }
-    except concurrent.futures.CancelledError:
-        return
     except Exception as e:
         message = {
             "error": str(e)
             }
         traceback.print_exc()
-    asyncio.shield(send_message_to_all_js_clients(message))
+    EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
 
 async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
@@ -165,27 +207,10 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
                          message: str):
     """ handle a message sent by one of the clients
     """
-    global DISTRIBUTING
-
     if message.startswith('filepath:'):
-        if DISTRIBUTING:
-            DISTRIBUTING.cancel()
-        fpath = ARGS.home / message[9:]
-        try:
-            content = await EVENT_LOOP.run_in_executor(None,
-                                                       readfile,
-                                                       fpath)
-        except (FileNotFoundError, IsADirectoryError) as e:
-            DISTRIBUTING = EVENT_LOOP.create_task(
-                send_message_to_all_js_clients(
-                    {
-                        "error": str(e)
-                        }))
-            traceback.print_exc()
-            return
-        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
-            fpath,
-            content))
+        global QUEUE
+        QUEUE = ('filepath', ARGS.home / message[9:])
+        EVENT_LOOP.create_task(processqueue())
     elif message.startswith('citeproc'):
         EVENT_LOOP.run_in_executor(None,
                                    citeproc,
@@ -208,10 +233,10 @@ async def send_message_to_all_js_clients(message):
 
 # FLR: md2json with `--filter pandoc-citeproc` is slooow
 # thus this workaround to speed things up
-def citeproc(client):
+def citeproc(client=None):
     # TODO: obviously need to speed up (lru_cache)
     #       check for timestamp of involved bibfiles for lru_cache hashes
-    jsonf = dict(CACHE.json)
+    jsonf = CACHE.json
     jsonf['blocks'] = list(citeblock_generator(CACHE.json['blocks'], 'Cite'))
     call = ["pandoc",
             "--from", "json", "--to", "html5",
@@ -224,13 +249,10 @@ def citeproc(client):
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
     stdout, stderr = proc.communicate(json.dumps(jsonf).encode())
-    # TODO: decide on format to communicate with js client
-    #       should key-val pairs be passed or just rely on ordering?
-    # stdout = <p><span class="citation" ....>...</span</p>
-    #          ...
-    #          <p><span class="citation" ....>...</span</p>
-    #          <div id=refs>...</div>
-    EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
+    if client:
+        EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
+    else:
+        EVENT_LOOP.create_task(send_message_to_all_js_clients(stdout.decode()))
 
 
 async def md2json(content, cwd):

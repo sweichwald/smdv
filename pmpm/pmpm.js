@@ -517,6 +517,10 @@ async function initWebsocket()
             showStatusWarning(message.error);
             return;
         }
+        if(message.status !== undefined) {
+            showStatusInfo(message.status);
+            return;
+        }
 
         if(!message.htmlblocks) {
             // Async citeproc result
