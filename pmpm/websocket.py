@@ -1,13 +1,14 @@
 import asyncio
+from async_lru import alru_cache
 from collections import namedtuple
 import concurrent.futures
-from functools import lru_cache
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import traceback
+import uvloop
 import websockets
 from .utils import citeblock_generator, parse_args
 
@@ -15,6 +16,7 @@ LRU_CACHE_SIZE = 8192
 
 JSCLIENTS = set()
 
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 EVENT_LOOP = asyncio.get_event_loop()
 
 CACHE = namedtuple('CACHE', ['cwd', 'json', 'htmlblocks'])
@@ -229,7 +231,6 @@ def citeproc(client):
     #          ...
     #          <p><span class="citation" ....>...</span</p>
     #          <div id=refs>...</div>
-    print(stdout.decode())
     EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
 
 
@@ -250,32 +251,21 @@ def md2json(content, cwd):
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
-@lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd, outtype):
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def json2htmlblock(jsontxt, cwd, outtype):
     call = ["pandoc",
             "--from", "json", "--to", outtype, "--"+ARGS.math]
-    proc = subprocess.Popen(
-        call,
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        *call,
         cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(jsontxt.encode())
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(jsontxt.encode())
     html = urlRegex.sub(
         f'\\1="file://{cwd}/\\2" onclick="return localLinkClickEvent(this);"',
         stdout.decode())
     return [hash(html), html]
-
-
-async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
-    blocking_tasks = [
-        EVENT_LOOP.run_in_executor(None,
-                                   json2htmlblock,
-                                   jsontxt,
-                                   cwd,
-                                   outtype)
-        for jsontxt in jsontxts]
-    return await asyncio.gather(*blocking_tasks)
 
 
 async def md2htmlblocks(content, cwd) -> str:
@@ -295,25 +285,25 @@ async def md2htmlblocks(content, cwd) -> str:
         md2json,
         content,
         cwd)
-    blocks = jsonout['blocks']
 
     # FLR: md2json with `--filter pandoc-citeproc` is slooow
     # thus this workaround to speed things up
-    CACHE.cwd = cwd
-    CACHE.json = dict(jsonout)
 
-    jsonlist = []
-    for bid, b in enumerate(blocks):
-        jsonout['blocks'] = [b]
-        jsonstr = json.dumps(jsonout)
-        jsonlist.append(jsonstr)
+    jsonlist = (
+        json.dumps({"blocks": [j],
+                    "meta": {},
+                    "pandoc-api-version": jsonout['pandoc-api-version']})
+        for j in jsonout['blocks'])
 
     outtype = "html5"
     if content.startswith("<!-- revealjs -->\n"):
         outtype = "revealjs"
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype)
+    htmlblocks = await asyncio.gather(*(
+        json2htmlblock(j, cwd, outtype)
+        for j in jsonlist))
 
-    CACHE.htmlblocks = htmlblocks
+    CACHE.cwd = cwd
+    CACHE.json = dict(jsonout)
 
     return htmlblocks
