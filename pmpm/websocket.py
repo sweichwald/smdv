@@ -207,6 +207,8 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
+# FLR: md2json with `--filter pandoc-citeproc` is slooow
+# thus this workaround to speed things up
 def citeproc(client):
     # TODO: obviously need to speed up (lru_cache)
     #       check for timestamp of involved bibfiles for lru_cache hashes
@@ -234,10 +236,10 @@ def citeproc(client):
 
 async def md2json(content, cwd):
     proc = await asyncio.subprocess.create_subprocess_exec(
-        *["pandoc",
-          "--from", "markdown+emoji",
-          "--to", "json",
-          "--"+ARGS.math],
+        "pandoc",
+        "--from", "markdown+emoji",
+        "--to", "json",
+        "--"+ARGS.math,
         cwd=cwd,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
@@ -251,10 +253,11 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
 async def json2htmlblock(jsontxt, cwd, outtype):
-    call = ["pandoc",
-            "--from", "json", "--to", outtype, "--"+ARGS.math]
     proc = await asyncio.subprocess.create_subprocess_exec(
-        *call,
+        "pandoc",
+        "--from", "json",
+        "--to", outtype,
+        "--"+ARGS.math,
         cwd=cwd,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
@@ -280,8 +283,8 @@ async def md2htmlblocks(content, cwd) -> str:
 
     jsonout = await md2json(content, cwd)
 
-    # FLR: md2json with `--filter pandoc-citeproc` is slooow
-    # thus this workaround to speed things up
+    CACHE.cwd = cwd
+    CACHE.json = jsonout
 
     jsonlist = (
         json.dumps({"blocks": [j],
@@ -296,8 +299,5 @@ async def md2htmlblocks(content, cwd) -> str:
     htmlblocks = await asyncio.gather(*(
         json2htmlblock(j, cwd, outtype)
         for j in jsonlist))
-
-    CACHE.cwd = cwd
-    CACHE.json = dict(jsonout)
 
     return htmlblocks
