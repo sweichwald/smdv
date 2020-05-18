@@ -74,6 +74,8 @@ const hashAttr = 'data-hash';
 const footnotes = document.getElementById('footnotes');
 const footnotesChildren = footnotes.children;
 const references = document.getElementById('references');
+const referencesTitle = document.getElementById('bibliography');
+let suppressBibliography = false;
 let fpath = (new URLSearchParams(window.location.search)).get('filepath');
 
 
@@ -315,6 +317,30 @@ function extractReferences(newEl)
     return hasNewTextCites;
 }
 
+function replaceRefList(refList)
+{
+    // Remove old references element, if any
+    if(_refsElement !== undefined && _refsElement !== refList)
+        _refsElement.parentNode.removeChild(_refsBlock);
+    _refsElement = refList;
+
+    // Insert in correct place
+    const refs = document.getElementById('refs');
+    if(refs)
+        refs.appendChild(refList);
+    else
+        references.appendChild(refList);
+}
+
+function showHideRefList()
+{
+    if(_refsElement !== undefined) {
+        _refsElement.style.display = suppressBibliography ? 'none' : 'block';
+        references.style.display = suppressBibliography || _refsElement.parentNode !== references  ? 'none' : 'block';
+    } else
+        references.style.display = 'none';
+}
+
 function citeprocResultEvent(message)
 {
     console.log(performance.now(), 'citeproc result event');
@@ -361,16 +387,9 @@ function citeprocResultEvent(message)
 
     // Replace reference list with new reference list, if any
     const refList = div.querySelector('.references');
-    refList.id = 'pmpmRefs';
-    const oldRefList = document.getElementById('pmpmRefs');
-    if(oldRefList)
-        oldRefList.parentNode.removeChild(oldRefList);
     if(refList) {
-        const refs = document.getElementById('refs');
-        if(refs)
-            refs.appendChild(refList);
-        else
-            references.appendChild(refList);
+        replaceRefList(refList);
+        showHideRefList();
     }
 
     console.log(performance.now(), 'citeproc done');
@@ -378,7 +397,8 @@ function citeprocResultEvent(message)
 
 const _citekeyRefcounts = {};
 const _textcitesCache = {};
-function updateBodyFromBlocks(contentnew)
+let _refsElement;
+function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 {
     console.log(performance.now(), 'start updateBody')
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
@@ -500,9 +520,35 @@ function updateBodyFromBlocks(contentnew)
         const showFootnotes = footnotes.lastElementChild.start > 1 || footnotes.lastElementChild.childElementCount;
         footnotes.parentNode.style.display = showFootnotes ? 'block': 'none';
 
+        if(_refsElement !== undefined) {
+            // Check if
+            // a) current reference list got removed from document
+            //    Happens when custom <div id="refs"></div> is removed
+            // b) current reference list is at bottom, but a custom <div id="refs'> just got added
+            // In either case: Move _refsElement to new location
+            if(!_refsElement.isConnected ||
+                (_refsElement.parentNode === references && document.getElementById('refs')))
+                replaceRefList(_refsElement);
+        }
+    }
+
+    // Show/hide bibliography
+    // Do before scrolling because this can change the scroll position for custom <div id="refs">
+    // Do outside firstchange !== undefined check, because this can change without htmlblocks changes
+    showHideRefList();
+
+    if(firstChange !== undefined) {
         // scroll first changed block into view
         scrollToFirstChange(firstChange, firstChangeCompare);
     }
+
+    // Set references title
+    if(referenceSectionTitle !== "") {
+        referencesTitle.textContent = referenceSectionTitle;
+        referencesTitle.style.display = "";
+    } else
+        referencesTitle.style.display = "none";
+
     console.log(performance.now(), 'end updateBody');
 
     // Render references asynchronously
@@ -548,23 +594,24 @@ async function initWebsocket()
     _websocket.onmessage = function (event) {
         // parse message
         const message = JSON.parse(event.data);
-        if(message.error !== undefined) {
-            showStatusWarning(message.error);
-            return;
-        }
-        if(message.status !== undefined) {
-            showStatusInfo(message.status);
-            return;
-        }
 
-        if(!message.htmlblocks) {
+        if(message.htmlblocks !== undefined) {
+            // update page
+            suppressBibliography = message["suppress-bibliography"];
+            updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);
+        } else {
+            if(message.error !== undefined) {
+                showStatusWarning(message.error);
+                return;
+            }
+            if(message.status !== undefined) {
+                showStatusInfo(message.status);
+                return;
+            }
             // Async citeproc result
             citeprocResultEvent(message);
             return;
         }
-
-        // update page
-        updateBodyFromBlocks(message.htmlblocks);
 
         // change browser url
         if (message.filepath != fpath) {
