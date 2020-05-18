@@ -1,3 +1,50 @@
+"""
+run_websocket_server():
+    entry point, mkfifo, start websocket server and monitorpipe
+monitorpipe():
+    connects read NAMED_PIPE, reconnects upon PIPE_LOST event
+ReadPipeProtocol:
+    buffers piped in content,
+    queues and triggers processqueue when eof or \0 received,
+    PIPE_LOST on connection_lost
+progressbar
+processqueue:
+    processes queue when triggered and not yet PROCESSING
+    --> new_pipe_content or new_filepath_request
+new_pipe_content:
+    decodes input, resolves filepath if given
+    --> process_new_content
+new_filepath_request:
+    retrieves file
+    --> process_new_content
+process_new_content:
+    compiles message to distribute to JSCLIENTS;
+serve_client / register_client / unregister_client:
+    handles JSCLIENTS
+    --> handle_message
+readfile
+handle_message:
+    JSCLIENTS send either
+        filepath request: queue and trigger processqueue
+    or
+        citeproc: trigger citeproc
+send_message_to_all_js_clients
+citeproc:
+    `--filter pandoc-citeproc` is sloow,
+    thus JSCLIENTS request bibliographic information only when needed,
+    which is responded to by citeproc
+md2json
+json2htmlblock:
+    alru_cached block-wise conversion,
+    relative links are rewritten as file:// links,
+    onclick event allows pmpm.js to load .md links in pmpm
+md2htmlblocks:
+    --> md2json
+    CACHE.json and cwd (for citeproc)
+    --> json2htmlblock (asynchronously)
+"""
+
+
 import asyncio
 from async_lru import alru_cache
 from collections import namedtuple
@@ -11,6 +58,8 @@ import traceback
 import uvloop
 import websockets
 from .utils import citeblock_generator, parse_args
+
+
 LRU_CACHE_SIZE = 8192
 
 JSCLIENTS = set()
@@ -95,17 +144,25 @@ async def processqueue():
     global PROCESSING
     global QUEUE
     if not PROCESSING and QUEUE:
-        PROCESSING = EVENT_LOOP.create_task(progressbar())
-        q = QUEUE
-        QUEUE = None
-        if q[0] == 'pipe':
-            await new_pipe_content(q[1])
-        elif q[0] == 'filepath':
-            await new_filepath_request(q[1])
-        PROCESSING.cancel()
-        await asyncio.sleep(.382)
-        PROCESSING = False
-        EVENT_LOOP.create_task(processqueue())
+        try:
+            PROCESSING = EVENT_LOOP.create_task(progressbar())
+            q = QUEUE
+            QUEUE = None
+            if q[0] == 'pipe':
+                await new_pipe_content(q[1])
+            elif q[0] == 'filepath':
+                await new_filepath_request(q[1])
+        except Exception as e:
+            message = {
+                "error": str(e)
+                }
+            traceback.print_exc()
+            EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
+        finally:
+            PROCESSING.cancel()
+            await asyncio.sleep(.382)
+            PROCESSING = False
+            EVENT_LOOP.create_task(processqueue())
 
 
 async def new_pipe_content(instrlist):
@@ -125,32 +182,17 @@ async def new_pipe_content(instrlist):
 
 
 async def new_filepath_request(fpath):
-    try:
-        content = await EVENT_LOOP.run_in_executor(None,
-                                                   readfile,
-                                                   fpath)
-    except (FileNotFoundError, IsADirectoryError) as e:
-        EVENT_LOOP.create_task(
-            send_message_to_all_js_clients(
-                {
-                    "error": str(e)
-                    }))
-        traceback.print_exc()
-        return
+    content = await EVENT_LOOP.run_in_executor(None,
+                                               readfile,
+                                               fpath)
     await process_new_content(fpath, content)
 
 
 async def process_new_content(fpath, content):
-    try:
-        message = {
-            "filepath": str(os.path.relpath(fpath, ARGS.home)),
-            "htmlblocks": await md2htmlblocks(content, fpath.parent),
-            }
-    except Exception as e:
-        message = {
-            "error": str(e)
-            }
-        traceback.print_exc()
+    message = {
+        "filepath": str(fpath.relative_to(ARGS.home)),
+        "htmlblocks": await md2htmlblocks(content, fpath.parent),
+        }
     EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
 
