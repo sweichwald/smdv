@@ -98,6 +98,22 @@ pandoc file.md \
 ```
 
 
+## systemd
+
+You can create a systemd unit for pmpm in `HOME/.config/systemd/user/pmpm.service` with contents like
+```
+[Unit]
+Description=Pandoc markdown preview machine (pmpm)
+
+[Service]
+ExecStart=%h/.local/bin/pmpm-websocket --math katex --home %h --port 9877
+
+[Install]
+WantedBy=default.target
+```
+For mathml math mode replace katex with mathml.
+Then you can start/restart/stop pmpm with standard systemd commands like `systemd --user start pmpm`.
+pmpm will be started automatically at startup if you do `systemd --user enable pmpm`.
 
 ---
 
