@@ -53,7 +53,6 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import traceback
 import uvloop
 import websockets
@@ -67,7 +66,7 @@ JSCLIENTS = set()
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 EVENT_LOOP = asyncio.get_event_loop()
 
-CACHE = namedtuple('CACHE', ['cwd', 'json'])
+CACHE = namedtuple('CACHE', ['cwd', 'fpath', 'json'])
 
 QUEUE = None
 PROCESSING = False
@@ -191,7 +190,7 @@ async def new_filepath_request(fpath):
 async def process_new_content(fpath, content):
     message = {
         "filepath": str(fpath.relative_to(ARGS.home)),
-        "htmlblocks": await md2htmlblocks(content, fpath.parent),
+        "htmlblocks": await md2htmlblocks(content, fpath),
         }
     EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
@@ -254,9 +253,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         QUEUE = ('filepath', ARGS.home / message[9:])
         EVENT_LOOP.create_task(processqueue())
     elif message.startswith('citeproc'):
-        EVENT_LOOP.run_in_executor(None,
-                                   citeproc,
-                                   client)
+        EVENT_LOOP.create_task(citeproc(client))
 
 
 # send updated body contents to javascript clients
@@ -273,28 +270,101 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-# FLR: md2json with `--filter pandoc-citeproc` is slooow
-# thus this workaround to speed things up
-def citeproc(client=None):
-    # TODO: obviously need to speed up (lru_cache)
-    #       check for timestamp of involved bibfiles for lru_cache hashes
+async def citeproc(client=None):
+    global CACHE
     jsonf = CACHE.json
-    jsonf['blocks'] = list(citeblock_generator(CACHE.json['blocks'], 'Cite'))
-    call = ["pandoc",
-            "--from", "json", "--to", "html5",
-            "--filter", "pandoc-citeproc",
-            "--"+ARGS.math]
-    proc = subprocess.Popen(
-        call,
-        cwd=CACHE.cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(json.dumps(jsonf).encode())
+    jsonf['blocks'] = list(citeblock_generator(jsonf['blocks'], 'Cite'))
+    jsonf['meta']['references'] = await updatebibcache(jsonf, CACHE.cwd)
+    if 'bibliography' in jsonf['meta']:
+        del jsonf['meta']['bibliography']
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        "pandoc",
+        "--from", "json",
+        "--to", "html5",
+        "--filter", "pandoc-citeproc",
+        "--"+ARGS.math,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(json.dumps(jsonf).encode())
     if client:
         EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
     else:
         EVENT_LOOP.create_task(send_message_to_all_js_clients(stdout.decode()))
+
+
+# TODO:
+# supppress-bibliography
+# reference-section-title
+async def updatebibcache(jsondict, cwd):
+    bibinfo = await bibsubdict(jsondict)
+    # add bibliography_mtimes to uniqueify
+    bibliography = bibinfo['meta'].get('bibliography', None)
+    if bibliography and bibliography['t'] == 'MetaInlines':
+        bibfiles = [cwd / bibliography['c'][0]['c']]
+    elif bibliography:
+        bibfiles = [cwd / b['c'][0]['c']
+                    for b in bibliography['c']]
+    else:
+        bibfiles = []
+    bibinfo['bibfiles_'] = [(str(b), b.stat().st_mtime)
+                            for b in bibfiles]
+    # add csl_mtime to uniqueify
+    try:
+        bibinfo['meta']['csl_mtime_'] = (
+            cwd / bibinfo['meta']['csl']['c'][0]['c']
+            ).stat().st_mtime
+    except (FileNotFoundError, KeyError, TypeError):
+        pass
+    return await bibcache(json.dumps(bibinfo))
+
+
+async def bibsubdict(jsondict):
+    metakeys = ['bibliography',
+                'csl',
+                'link-citations',
+                'nocite',
+                'references']
+    return {'meta': {k: jsondict['meta'].get(k, None)
+                     for k in metakeys & jsondict['meta'].keys()}}
+
+
+# if not cached, it will trigger citeproc(None) distributing new bibinfo
+# to all clients (as those may not know about the changes)
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def bibcache(bibinfo):
+    bibinfo = json.loads(bibinfo)
+    bibinfo['references'] = []
+    for bfile in bibinfo['bibfiles_']:
+        bibinfo['references'].extend(await bib2json(*bfile))
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        "pandoc",
+        "--from", "markdown",
+        "--to", "json",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(
+        f"---\n{json.dumps(bibinfo)}\n---".encode())
+    # combine refs from bibfile with refs provided in md
+    references = json.loads(stdout.decode())['meta']['references']
+    if 'references' in bibinfo['meta']:
+        references['c'].extend(bibinfo['meta']['references']['c'])
+    EVENT_LOOP.create_task(citeproc(None))
+    return references
+
+
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def bib2json(bfile, bmtime):
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        "pandoc-citeproc",
+        "--bib2json",
+        bfile,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate()
+    return json.loads(stdout.decode())
 
 
 async def md2json(content, cwd):
@@ -308,7 +378,7 @@ async def md2json(content, cwd):
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL)
     stdout, stderr = await proc.communicate(content.encode())
-    return json.loads(stdout)
+    return json.loads(stdout.decode())
 
 
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
@@ -332,7 +402,7 @@ async def json2htmlblock(jsontxt, cwd, outtype):
     return [hash(html), html]
 
 
-async def md2htmlblocks(content, cwd) -> str:
+async def md2htmlblocks(content, fpath) -> str:
     """ convert markdown to html using pandoc markdown
 
     Args:
@@ -342,7 +412,7 @@ async def md2htmlblocks(content, cwd) -> str:
         html: str: the resulting html
 
     """
-    global CACHE
+    cwd = fpath.parent
 
     outtype = "html5"
     if content.startswith("<!-- revealjs -->\n"):
@@ -351,8 +421,9 @@ async def md2htmlblocks(content, cwd) -> str:
 
     jsonout = await md2json(content, cwd)
 
-    CACHE.cwd = cwd
-    CACHE.json = jsonout
+    global CACHE
+    CACHE.cwd, CACHE.fpath, CACHE.json = cwd, fpath, jsonout
+    EVENT_LOOP.create_task(updatebibcache(CACHE.json, CACHE.cwd))
 
     jsonlist = (
         json.dumps({"blocks": [j],
