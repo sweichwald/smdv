@@ -464,9 +464,23 @@ function updateBodyFromBlocks(contentnew)
             if(scrollTarget.nodeType != Node.ELEMENT_NODE)
                 scrollTarget = scrollTarget.parentNode;
         }
-        window.scrollTo({top:
-            scrollTarget.getBoundingClientRect().top +
-            window.pageYOffset - window.innerHeight / 5})
+        let newpos = scrollTarget.getBoundingClientRect().top +
+                     window.pageYOffset - window.innerHeight / 5;
+        // highlight
+        // only highlight if scrolling more than 80% / 40% down / up
+        let highlighting = ((newpos - window.pageYOffset > 4 * window.innerHeight / 5)
+                           || (newpos - window.pageYOffset < - 2 * window.innerHeight / 5));
+        let oldbg = scrollTarget.style.background;
+        if (highlighting) {
+            scrollTarget.style.background = "#fdf6e3";
+        }
+        // scroll
+        window.scrollTo({top: newpos});
+        // fade
+        if (highlighting) {
+            scrollTarget.style.background = oldbg;
+            scrollTarget.style.transition = "background-color .382s linear";
+        }
     }
     console.log(performance.now(), 'end updateBody');
 
