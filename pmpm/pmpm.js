@@ -143,6 +143,49 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
     return currentChildNodes[nchildren-1];
 }
 
+function scrollToFirstChange(scrollTarget, scrollTargetCompare)
+{
+    if(scrollTargetCompare && scrollTarget.childNodes.length) {
+        // TODO: Delay until async katex / viz rendering is done?
+        scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
+        if(scrollTarget.nodeType != Node.ELEMENT_NODE)
+            scrollTarget = scrollTarget.parentNode;
+    }
+
+    const windowheight20 = window.innerHeight / 5;
+    const newpos = scrollTarget.getBoundingClientRect().top +
+                      window.pageYOffset - windowheight20;
+
+    // highlight
+    // only highlight if scrolling more than 80% / 40% down / up
+    // not on initial page load, if we start scrolled down
+    const highlight = scrollTargetCompare &&
+        (newpos - window.pageYOffset > 4 * windowheight20
+         || newpos - window.pageYOffset < - 2 * windowheight20);
+    let origBg, origHasStyleAttribute;
+    if (highlight) {
+        origBg = scrollTarget.style.background;
+        origHasStyleAttribute = scrollTarget.hasAttribute('style');
+        scrollTarget.style.background = "#fdf6e3";
+    }
+
+    // scroll
+    window.scrollTo({top: newpos});
+
+    // fade
+    if (highlight) {
+        scrollTarget.style.background = origBg;
+        scrollTarget.style.transition = "background-color .382s linear";
+        // reset transition and style attribute. otherwise the next update will find the same
+        // scrollTarget in findFirstChangedChild()
+        setTimeout(() => {
+            scrollTarget.style.transition = '';
+            if(!origHasStyleAttribute)
+                scrollTarget.removeAttribute('style');
+        }, 382);
+    }
+}
+
 // Load local links to .md files directly in this pmpm instance
 // called for local src/href attributes, see websocket.py
 function localLinkClickEvent(el)
@@ -340,8 +383,8 @@ function updateBodyFromBlocks(contentnew)
     console.log(performance.now(), 'start updateBody')
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    let scrollTarget;
-    let scrollTargetCompare;
+    let firstChange;
+    let firstChangeCompare;
     let mustRenumber = false;
     let renumberNum;
     let hasNewTextCites = false;
@@ -368,9 +411,9 @@ function updateBodyFromBlocks(contentnew)
                     mustRenumber = true;
                 }
 
-                if (scrollTarget === undefined) {
-                    scrollTarget = children[i];
-                    scrollTargetCompare = children[j];
+                if (firstChange === undefined) {
+                    firstChange = children[i];
+                    firstChangeCompare = children[j];
                 }
             }
         } else {
@@ -395,9 +438,9 @@ function updateBodyFromBlocks(contentnew)
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
 
-            if (scrollTarget === undefined) {
-                scrollTarget = children[i];
-                scrollTargetCompare = children[i+1];
+            if (firstChange === undefined) {
+                firstChange = children[i];
+                firstChangeCompare = children[i+1];
             }
         }
 
@@ -452,35 +495,13 @@ function updateBodyFromBlocks(contentnew)
         footnotes.removeChild(footnotes.lastElementChild);
     }
 
-    if (scrollTarget !== undefined) {
+    if (firstChange !== undefined) {
         // Show/hide footnotes
         const showFootnotes = footnotes.lastElementChild.start > 1 || footnotes.lastElementChild.childElementCount;
         footnotes.parentNode.style.display = showFootnotes ? 'block': 'none';
 
         // scroll first changed block into view
-        // TODO: Delay until async katex / viz rendering is done?
-        if(scrollTargetCompare && scrollTarget.childNodes.length) {
-            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
-            if(scrollTarget.nodeType != Node.ELEMENT_NODE)
-                scrollTarget = scrollTarget.parentNode;
-        }
-        let newpos = scrollTarget.getBoundingClientRect().top +
-                     window.pageYOffset - window.innerHeight / 5;
-        // highlight
-        // only highlight if scrolling more than 80% / 40% down / up
-        let highlighting = ((newpos - window.pageYOffset > 4 * window.innerHeight / 5)
-                           || (newpos - window.pageYOffset < - 2 * window.innerHeight / 5));
-        let oldbg = scrollTarget.style.background;
-        if (highlighting) {
-            scrollTarget.style.background = "#fdf6e3";
-        }
-        // scroll
-        window.scrollTo({top: newpos});
-        // fade
-        if (highlighting) {
-            scrollTarget.style.background = oldbg;
-            scrollTarget.style.transition = "background-color .382s linear";
-        }
+        scrollToFirstChange(firstChange, firstChangeCompare);
     }
     console.log(performance.now(), 'end updateBody');
 
