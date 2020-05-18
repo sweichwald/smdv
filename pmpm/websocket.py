@@ -70,6 +70,7 @@ CACHE = namedtuple('CACHE', ['cwd', 'fpath', 'json'])
 
 QUEUE = None
 PROCESSING = False
+CITEPROCING = False
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
 PIPE_LOST = asyncio.Event()
@@ -256,7 +257,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         QUEUE = ('filepath', ARGS.home / message[9:])
         EVENT_LOOP.create_task(processqueue())
     elif message.startswith('citeproc'):
-        EVENT_LOOP.create_task(citeproc(client))
+        EVENT_LOOP.create_task(citeproc())
 
 
 # send updated body contents to javascript clients
@@ -273,31 +274,39 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-async def citeproc(client=None):
-    global CACHE
-    jsonf = CACHE.json
-    jsonf['blocks'] = list(citeblock_generator(jsonf['blocks'], 'Cite'))
-    jsonf['meta']['references'] = await updatebibcache(jsonf, CACHE.cwd)
-    if 'bibliography' in jsonf['meta']:
-        del jsonf['meta']['bibliography']
-    proc = await asyncio.subprocess.create_subprocess_exec(
-        "pandoc",
-        "--from", "json",
-        "--to", "html5",
-        "--filter", "pandoc-citeproc",
-        "--"+ARGS.math,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL)
-    stdout, stderr = await proc.communicate(json.dumps(jsonf).encode())
-    if client:
-        EVENT_LOOP.create_task(client.send(json.dumps(stdout.decode())))
-    else:
-        EVENT_LOOP.create_task(send_message_to_all_js_clients(stdout.decode()))
+async def citeproc():
+    global CITEPROCING
+    if not CITEPROCING:
+        try:
+            CITEPROCING = True
+            global CACHE
+            jsonf = CACHE.json.copy()
+            jsonf['blocks'] = list(citeblock_generator(jsonf['blocks'],
+                                                       'Cite'))
+            jsonf['meta']['references'] = await uptodatereferences(jsonf,
+                                                                   CACHE.cwd)
+            if 'bibliography' in jsonf['meta']:
+                del jsonf['meta']['bibliography']
+            proc = await asyncio.subprocess.create_subprocess_exec(
+                "pandoc",
+                "--from", "json",
+                "--to", "html5",
+                "--filter", "pandoc-citeproc",
+                "--"+ARGS.math,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL)
+            stdout, stderr = await proc.communicate(json.dumps(jsonf).encode())
+            EVENT_LOOP.create_task(
+                send_message_to_all_js_clients(stdout.decode()))
+        finally:
+            CITEPROCING = False
 
 
-async def updatebibcache(jsondict, cwd):
+async def uptodatereferences(jsondict, cwd):
     bibinfo = await bibsubdict(jsondict)
+    if not bibinfo['meta']:
+        return
     # add bibliography_mtimes to uniqueify
     bibliography = bibinfo['meta'].get('bibliography', None)
     if bibliography and bibliography['t'] == 'MetaInlines':
@@ -329,7 +338,7 @@ async def bibsubdict(jsondict):
                      for k in metakeys & jsondict['meta'].keys()}}
 
 
-# if not cached, it will trigger citeproc(None) distributing new bibinfo
+# if not cached, it will trigger citeproc() distributing new bibinfo
 # to all clients (as those may not know about the changes)
 @alru_cache(maxsize=LRU_CACHE_SIZE)
 async def bibcache(bibinfo):
@@ -350,7 +359,7 @@ async def bibcache(bibinfo):
     references = json.loads(stdout.decode())['meta']['references']
     if 'references' in bibinfo['meta']:
         references['c'].extend(bibinfo['meta']['references']['c'])
-    EVENT_LOOP.create_task(citeproc(None))
+    EVENT_LOOP.create_task(citeproc())
     return references
 
 
@@ -423,7 +432,7 @@ async def md2htmlblocks(content, fpath) -> str:
 
     global CACHE
     CACHE.cwd, CACHE.fpath, CACHE.json = cwd, fpath, jsonout
-    EVENT_LOOP.create_task(updatebibcache(CACHE.json, CACHE.cwd))
+    EVENT_LOOP.create_task(uptodatereferences(CACHE.json, CACHE.cwd))
 
     jsonlist = (
         json.dumps({"blocks": [j],
