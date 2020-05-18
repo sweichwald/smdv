@@ -38,7 +38,7 @@ and basically can be implemented for any editor by regularly piping the current 
   ([vim2pmpm][vim] does this automatically)
 * for __increased speed__,
   pmpm aims to make use of async where possible
-  and implements a block-wise lru_cached pandoc-backed rendering threadpool
+  and implements block-wise async lru_cached pandoc-backed rendering
 * for __increased speed__, pmpm's javascript updates only the changed blocks instead of re-setting the entire innerhtml
 * pmpm's default html layout is based on [killercup's css](https://gist.github.com/killercup/5917178)
   and looks nice

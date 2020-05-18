@@ -32,7 +32,17 @@ send_message_to_all_js_clients
 citeproc:
     `--filter pandoc-citeproc` is sloow,
     thus JSCLIENTS request bibliographic information only when needed,
-    which is responded to by citeproc
+    which is responded to by citeproc,
+    or cachedreferences() triggers citeproc upon changed bibinfo to flush
+    new bibdetails to all clients
+uptodatereferences:
+    ensures up to date references uniqueifying bibinfo hashes
+bibsubdict:
+    given a pandoc json return only meta data relevant for citeproc
+cachedreferences:
+    prepares bibliography files and exising inline bibentries
+    for inclusion into pandoc json directly
+bib2json
 md2json
 json2htmlblock:
     alru_cached block-wise conversion,
@@ -325,7 +335,7 @@ async def uptodatereferences(jsondict, cwd):
             ).stat().st_mtime
     except (FileNotFoundError, KeyError, TypeError):
         pass
-    return await bibcache(json.dumps(bibinfo))
+    return await cachedreferences(json.dumps(bibinfo))
 
 
 async def bibsubdict(jsondict):
@@ -341,7 +351,7 @@ async def bibsubdict(jsondict):
 # if not cached, it will trigger citeproc() distributing new bibinfo
 # to all clients (as those may not know about the changes)
 @alru_cache(maxsize=LRU_CACHE_SIZE)
-async def bibcache(bibinfo):
+async def cachedreferences(bibinfo):
     bibinfo = json.loads(bibinfo)
     bibinfo['references'] = []
     for bfile in bibinfo['bibfiles_']:
