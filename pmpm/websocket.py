@@ -269,7 +269,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         QUEUE = ('filepath', ARGS.home / message[9:])
         EVENT_LOOP.create_task(processqueue())
     elif message.startswith('citeproc'):
-        EVENT_LOOP.create_task(citeproc())
+        EVENT_LOOP.run_in_executor(None, citeproc)
 
 
 # send updated body contents to javascript clients
@@ -286,48 +286,39 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-async def citeproc():
+def citeproc():
     global CITEPROCING
     if not CITEPROCING:
         try:
             CITEPROCING = True
-            global CACHE
-            jsonf = CACHE.json.copy()
-            jsonf['blocks'] = list(citeblock_generator(jsonf['blocks'],
-                                                       'Cite'))
-            jsonf['meta']['references'] = await uptodatereferences(jsonf,
-                                                                   CACHE.cwd)
-            if 'bibliography' in jsonf['meta']:
-                del jsonf['meta']['bibliography']
-            # if files get large
-            stdout = await EVENT_LOOP.run_in_executor(
-                None,
-                citeproc_sub,
-                json.dumps(jsonf).encode())
+            jsonf = CACHE.json
+            jsonf['blocks'] = list(
+                citeblock_generator(CACHE.json['blocks'], 'Cite'))
+
             EVENT_LOOP.create_task(
-                send_message_to_all_js_clients(stdout))
+                send_message_to_all_js_clients(
+                    citeproc_sub(json.dumps(jsonf).encode())))
         finally:
             CITEPROCING = False
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def citeproc_sub(jsonf):
-    proc = subprocess.Popen(
-        [
-            "pandoc",
-            "--from", "json",
-            "--to", "html5",
+def citeproc_sub(jsondump):
+    call = ["pandoc",
+            "--from", "json", "--to", "html5",
             "--filter", "pandoc-citeproc",
-            "--"+ARGS.math
-        ],
+            "--"+ARGS.math]
+    proc = subprocess.Popen(
+        call,
+        cwd=CACHE.cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(jsonf)
+    stdout, stderr = proc.communicate(jsondump)
     return stdout.decode()
 
 
-async def uptodatereferences(jsondict, cwd):
+async def checkforbibdifferences(jsondict, cwd):
     bibinfo = await bibsubdict(jsondict)
     if not bibinfo['meta']:
         return
@@ -349,7 +340,15 @@ async def uptodatereferences(jsondict, cwd):
             ).stat().st_mtime
     except (FileNotFoundError, KeyError, TypeError):
         pass
-    return await cachedreferences(json.dumps(bibinfo))
+    bibinfo['cwd_'] = str(cwd)
+    await triggerciteproc(json.dumps(bibinfo))
+
+
+# if not cached, it will trigger citeproc() distributing new bibinfo
+# to all clients (as those may not know about the changes)
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def triggerciteproc(bibinfo):
+    EVENT_LOOP.run_in_executor(None, citeproc)
 
 
 async def bibsubdict(jsondict):
@@ -360,44 +359,6 @@ async def bibsubdict(jsondict):
                 'references']
     return {'meta': {k: jsondict['meta'].get(k, None)
                      for k in metakeys & jsondict['meta'].keys()}}
-
-
-# if not cached, it will trigger citeproc() distributing new bibinfo
-# to all clients (as those may not know about the changes)
-@alru_cache(maxsize=LRU_CACHE_SIZE)
-async def cachedreferences(bibinfo):
-    bibinfo = json.loads(bibinfo)
-    bibinfo['references'] = []
-    for bfile in bibinfo['bibfiles_']:
-        bibinfo['references'].extend(await bib2json(*bfile))
-    proc = await asyncio.subprocess.create_subprocess_exec(
-        "pandoc",
-        "--from", "markdown",
-        "--to", "json",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL)
-    stdout, stderr = await proc.communicate(
-        f"---\n{json.dumps(bibinfo)}\n---".encode())
-    # combine refs from bibfile with refs provided in md
-    references = json.loads(stdout.decode())['meta']['references']
-    if 'references' in bibinfo['meta']:
-        references['c'].extend(bibinfo['meta']['references']['c'])
-    EVENT_LOOP.create_task(citeproc())
-    return references
-
-
-@alru_cache(maxsize=LRU_CACHE_SIZE)
-async def bib2json(bfile, bmtime):
-    proc = await asyncio.subprocess.create_subprocess_exec(
-        "pandoc-citeproc",
-        "--bib2json",
-        bfile,
-        stdin=asyncio.subprocess.DEVNULL,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL)
-    stdout, stderr = await proc.communicate()
-    return json.loads(stdout.decode())
 
 
 async def md2json(content, cwd):
@@ -456,7 +417,8 @@ async def md2htmlblocks(content, fpath) -> str:
 
     global CACHE
     CACHE.cwd, CACHE.fpath, CACHE.json = cwd, fpath, jsonout
-    EVENT_LOOP.create_task(uptodatereferences(CACHE.json, CACHE.cwd))
+    EVENT_LOOP.create_task(
+        checkforbibdifferences(CACHE.json, CACHE.cwd))
 
     jsonlist = (
         json.dumps({"blocks": [j],
