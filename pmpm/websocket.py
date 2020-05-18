@@ -58,11 +58,13 @@ md2htmlblocks:
 import asyncio
 from async_lru import alru_cache
 from collections import namedtuple
+from functools import lru_cache
 from itertools import count
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import traceback
 import uvloop
 import websockets
@@ -297,20 +299,32 @@ async def citeproc():
                                                                    CACHE.cwd)
             if 'bibliography' in jsonf['meta']:
                 del jsonf['meta']['bibliography']
-            proc = await asyncio.subprocess.create_subprocess_exec(
-                "pandoc",
-                "--from", "json",
-                "--to", "html5",
-                "--filter", "pandoc-citeproc",
-                "--"+ARGS.math,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL)
-            stdout, stderr = await proc.communicate(json.dumps(jsonf).encode())
+            # if files get large
+            stdout = await EVENT_LOOP.run_in_executor(
+                None,
+                citeproc_sub,
+                json.dumps(jsonf).encode())
             EVENT_LOOP.create_task(
-                send_message_to_all_js_clients(stdout.decode()))
+                send_message_to_all_js_clients(stdout))
         finally:
             CITEPROCING = False
+
+
+@lru_cache(maxsize=LRU_CACHE_SIZE)
+def citeproc_sub(jsonf):
+    proc = subprocess.Popen(
+        [
+            "pandoc",
+            "--from", "json",
+            "--to", "html5",
+            "--filter", "pandoc-citeproc",
+            "--"+ARGS.math
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(jsonf)
+    return stdout.decode()
 
 
 async def uptodatereferences(jsondict, cwd):
