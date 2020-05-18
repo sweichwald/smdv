@@ -188,9 +188,12 @@ async def new_filepath_request(fpath):
 
 
 async def process_new_content(fpath, content):
+    htmlblocks, supbib, refsectit = await md2htmlblocks(content, fpath)
     message = {
         "filepath": str(fpath.relative_to(ARGS.home)),
-        "htmlblocks": await md2htmlblocks(content, fpath),
+        "htmlblocks": htmlblocks,
+        "suppress-bibliography": supbib,
+        "reference-section-title": refsectit,
         }
     EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
@@ -293,9 +296,6 @@ async def citeproc(client=None):
         EVENT_LOOP.create_task(send_message_to_all_js_clients(stdout.decode()))
 
 
-# TODO:
-# supppress-bibliography
-# reference-section-title
 async def updatebibcache(jsondict, cwd):
     bibinfo = await bibsubdict(jsondict)
     # add bibliography_mtimes to uniqueify
@@ -433,5 +433,16 @@ async def md2htmlblocks(content, fpath) -> str:
 
     htmlblocks = [await json2htmlblock(j, cwd, outtype)
                   for j in jsonlist]
+    try:
+        supbib = jsonout['meta']['suppress-bibliography']['c'] is True
+    except KeyError:
+        supbib = False
 
-    return htmlblocks
+    try:
+        refsectit = jsonout['meta']['reference-section-title']['c'][0]['c']
+    except (IndexError, KeyError):
+        refsectit = ''
+
+    return (htmlblocks,
+            supbib,
+            refsectit)
