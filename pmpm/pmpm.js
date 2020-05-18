@@ -321,7 +321,7 @@ function replaceRefList(refList)
 {
     // Remove old references element, if any
     if(_refsElement !== undefined && _refsElement !== refList)
-        _refsElement.parentNode.removeChild(_refsBlock);
+        _refsElement.parentNode.removeChild(_refsElement);
     _refsElement = refList;
 
     // Insert in correct place
@@ -388,6 +388,7 @@ function citeprocResultEvent(message)
     // Replace reference list with new reference list, if any
     const refList = div.querySelector('.references');
     if(refList) {
+        refList.id = 'pmpmRefs'; // avoid collision with custom <div id="refs">
         replaceRefList(refList);
         showHideRefList();
     }
