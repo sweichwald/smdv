@@ -445,3 +445,8 @@ div#status {
 .fade {
     transition: background-color .373s linear;
 }
+
+/* Not found citations */
+.citeproc-not-found {
+    color: red;
+}
