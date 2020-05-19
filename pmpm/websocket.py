@@ -280,7 +280,11 @@ def citeproc():
         try:
             CITEPROCING = True
             global LASTBIB
-            LASTBIB, cwd, prevbib, BIBCACHE.json = uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd), BIBCACHE.cwd, LASTBIB, None
+            LASTBIB, cwd, prevbib, BIBCACHE.json = (
+                uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd),
+                BIBCACHE.cwd,
+                LASTBIB,
+                None)
             if prevbib != LASTBIB:
                 EVENT_LOOP.create_task(
                     send_message_to_all_js_clients(
