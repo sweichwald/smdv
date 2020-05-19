@@ -33,16 +33,11 @@ citeproc:
     `--filter pandoc-citeproc` is sloow,
     thus JSCLIENTS request bibliographic information only when needed,
     which is responded to by citeproc,
-    or checkforbibdifferences() triggers citeproc upon changed bibinfo to flush
+    or citeproc is triggered upon changed bibinfo to distribute
     new bibdetails to all clients
 citeproc_sub:
     cached subprocess pandoc call
-bibsubdict:
-    given a pandoc json return only meta data relevant for citeproc
 uniqueciteprocdict
-checkforbibdifferences:
-    ensures up to date references uniqueifying bibinfo hashes and
-    checking whether it has previously been cached
 md2json
 json2htmlblock:
     alru_cached block-wise conversion,
@@ -50,7 +45,7 @@ json2htmlblock:
     onclick event allows pmpm.js to load .md links in pmpm
 md2htmlblocks:
     --> md2json
-    CACHE.json and cwd (for citeproc)
+    BIBCACHE.json and cwd (for citeproc)
     --> json2htmlblock (asynchronously)
 """
 
@@ -78,10 +73,10 @@ JSCLIENTS = set()
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 EVENT_LOOP = asyncio.get_event_loop()
 
-CACHE = namedtuple('CACHE', ['cwd', 'json'])
-
 QUEUE = None
 PROCESSING = False
+
+BIBCACHE = namedtuple('CACHE', ['cwd', 'json'])
 CITEPROCING = False
 LASTBIB = None
 
@@ -281,82 +276,75 @@ async def send_message_to_all_js_clients(message):
 
 def citeproc():
     global CITEPROCING
-    if not CITEPROCING:
+    if not CITEPROCING and BIBCACHE.json:
         try:
             CITEPROCING = True
-            jsonf, cwd = CACHE.json.copy(), CACHE.cwd
-            jsonf['blocks'] = list(
-                citeblock_generator(CACHE.json['blocks'], 'Cite'))
             global LASTBIB
-            LASTBIB = uniqueciteprocdict(jsonf, cwd)
-            jsonf['uniqueciteprocdict_'] = LASTBIB
-            EVENT_LOOP.create_task(
-                send_message_to_all_js_clients(
-                    citeproc_sub(json.dumps(jsonf).encode())))
+            LASTBIB, cwd, prevbib, BIBCACHE.json = uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd), BIBCACHE.cwd, LASTBIB, None
+            if prevbib != LASTBIB:
+                EVENT_LOOP.create_task(
+                    send_message_to_all_js_clients(
+                        citeproc_sub(json.dumps(LASTBIB), cwd)))
+            EVENT_LOOP.run_in_executor(None, citeproc)
         finally:
             CITEPROCING = False
-            EVENT_LOOP.create_task(
-                checkforbibdifferences(CACHE.json, CACHE.cwd))
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
-def citeproc_sub(jsondump):
+def citeproc_sub(jsondump, cwd):
     call = ["pandoc",
             "--from", "json", "--to", "html5",
             "--filter", "pandoc-citeproc",
             "--"+ARGS.math]
     proc = subprocess.Popen(
         call,
-        cwd=CACHE.cwd,
+        cwd=cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(jsondump)
+    stdout, stderr = proc.communicate(jsondump.encode())
     return stdout.decode()
 
 
-def bibsubdict(jsondict):
-    metakeys = ['bibliography',
+def uniqueciteprocdict(bibinfo, cwd):
+    # keep citeblocks only
+    bibinfo['blocks'] = list(
+        citeblock_generator(bibinfo['blocks'], 'Cite'))
+    # drop everything but the blocks and bib-relevant metadata
+    metakeys = {'bibliography',
                 'csl',
                 'link-citations',
                 'nocite',
-                'references']
-    return {'meta': {k: jsondict['meta'].get(k, None)
-                     for k in metakeys & jsondict['meta'].keys()}}
+                'references'}
+    for del_k in bibinfo.keys() - {'blocks', 'meta', 'pandoc-api-version'}:
+        del bibinfo[del_k]
+    for del_k in bibinfo['meta'].keys() - metakeys:
+        del bibinfo['meta'][del_k]
 
-
-def uniqueciteprocdict(jsondict, cwd):
-    bibinfo = bibsubdict(jsondict)
+    # no bibliography or bibentries given
     if not bibinfo['meta']:
         return
 
-    # add bibliography_mtimes to uniqueify
+    # add bibliography_mtimes_ to uniqueify
     bibliography = bibinfo['meta'].get('bibliography', None)
-    if bibliography and bibliography['t'] == 'MetaInlines':
-        bibfiles = [cwd / bibliography['c'][0]['c']]
-    elif bibliography:
-        bibfiles = [cwd / b['c'][0]['c']
-                    for b in bibliography['c']]
-    else:
-        bibfiles = []
-    bibinfo['bibfiles_'] = [b.stat().st_mtime
-                            for b in bibfiles]
+    if bibliography:
+        if bibliography['t'] == 'MetaInlines':
+            bibfiles = [cwd / bibliography['c'][0]['c']]
+        else:
+            bibfiles = [cwd / b['c'][0]['c']
+                        for b in bibliography['c']]
+        bibinfo['bibliography_mtimes_'] = [b.stat().st_mtime
+                                           for b in bibfiles]
 
-    # add csl_mtime to uniqueify
+    # add csl_mtime_ to uniqueify
     try:
-        bibinfo['meta']['csl_mtime_'] = (
+        bibinfo['csl_mtime_'] = (
             cwd / bibinfo['meta']['csl']['c'][0]['c']
             ).stat().st_mtime
     except (FileNotFoundError, IndexError, KeyError, TypeError):
         pass
 
     return bibinfo
-
-
-async def checkforbibdifferences(jsondict, cwd):
-    bibinfo = uniqueciteprocdict(jsondict, cwd)
-    if not LASTBIB == bibinfo:
-        EVENT_LOOP.run_in_executor(None, citeproc)
 
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
@@ -413,10 +401,9 @@ async def md2htmlblocks(content, cwd):
 
     jsonout = await md2json(content, cwd)
 
-    global CACHE
-    CACHE.cwd, CACHE.json = cwd, jsonout
-    EVENT_LOOP.create_task(
-        checkforbibdifferences(CACHE.json, CACHE.cwd))
+    global BIBCACHE
+    BIBCACHE.cwd, BIBCACHE.json = cwd, jsonout
+    EVENT_LOOP.run_in_executor(None, citeproc)
 
     jsonlist = (
         json.dumps({"blocks": [j],
