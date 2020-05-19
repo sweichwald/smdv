@@ -180,10 +180,10 @@ function scrollToFirstChange(scrollTarget, scrollTargetCompare)
     // highlight
     // only highlight if scrolling more than 80% / 40% down / up
     // not on initial page load, if we start scrolled down
-    const highlight = scrollTargetCompare &&
+    const shouldHighlight = scrollTargetCompare &&
         (newpos - window.pageYOffset > 4 * windowheight20
          || newpos - window.pageYOffset < - 2 * windowheight20);
-    if (highlight)
+    if (shouldHighlight)
         highlight(scrollTarget);
 
     // scroll
