@@ -309,20 +309,18 @@ async def citeproc_sub(jsondump, bibid, cwd):
 
 
 async def uniqueciteprocdict(jsondict, cwd):
-    bibinfo = jsondict.copy()
-    # keep citeblocks only
-    bibinfo['blocks'] = list(
-        citeblock_generator(bibinfo['blocks'], 'Cite'))
-    # drop everything but the blocks and bib-relevant metadata
+    # keep only the blocks and bib-relevant metadata
     metakeys = {'bibliography',
                 'csl',
                 'link-citations',
                 'nocite',
                 'references'}
-    for del_k in bibinfo.keys() - {'blocks', 'meta', 'pandoc-api-version'}:
-        del bibinfo[del_k]
-    for del_k in bibinfo['meta'].keys() - metakeys:
-        del bibinfo['meta'][del_k]
+    bibinfo = {'pandoc-api-version': jsondict['pandoc-api-version']}
+    bibinfo['meta'] = {k: jsondict['meta'][k]
+                       for k in jsondict['meta'].keys() & metakeys}
+    # copy citeblocks only
+    bibinfo['blocks'] = list(
+        citeblock_generator(jsondict['blocks'], 'Cite'))
 
     # no bibliography or bibentries given
     if not bibinfo['meta']:
