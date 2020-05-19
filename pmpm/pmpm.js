@@ -301,6 +301,10 @@ function extractReferences(newEl)
         const cache = _textcitesCache[textcite];
         if(cache === undefined) {
             hasNewTextCites = true;
+            // Visually indicate that this has been identified as new textcite
+            // and is beeing fetched
+            el.style.origColor = el.style.color;
+            el.style.color = 'lightgray';
             _textcitesCache[textcite] = {elements: [el]};
         } else {
             cache.elements.push(el);
@@ -360,6 +364,8 @@ function citeprocResultEvent(message)
         for(const el of referenceElements) {
             i++;
             const textcite = el._referenceTextcite;
+            // Remove visual indication as this textcite has been fetched successfully
+            el.style.color = el.style.origColor;
             if(updatedTextcites[textcite])
                 continue;
             updatedTextcites[textcite] = true;
