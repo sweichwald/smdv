@@ -77,7 +77,7 @@ QUEUE = None
 PROCESSING = False
 
 BIBCACHE = namedtuple('CACHE', ['cwd', 'json'])
-CITEPROCING = False
+CITEPROC = asyncio.Event()
 LASTBIB = None
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
@@ -95,6 +95,7 @@ def run_websocket_server():
     if not NAMED_PIPE.is_fifo():
         os.mkfifo(NAMED_PIPE)
     EVENT_LOOP.create_task(monitorpipe())
+    EVENT_LOOP.create_task(citeproc())
     EVENT_LOOP.run_forever()
 
 
@@ -258,7 +259,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         EVENT_LOOP.create_task(processqueue())
     # assume it can only be a citeproc request then
     else:
-        EVENT_LOOP.run_in_executor(None, citeproc)
+        CITEPROC.set()
 
 
 async def send_message_to_all_js_clients(message):
@@ -274,24 +275,22 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-def citeproc():
-    global CITEPROCING
-    if not CITEPROCING and BIBCACHE.json:
-        try:
-            CITEPROCING = True
-            global LASTBIB
-            LASTBIB, cwd, prevbib, BIBCACHE.json = (
-                uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd),
-                BIBCACHE.cwd,
-                LASTBIB,
-                None)
-            if prevbib != LASTBIB:
-                EVENT_LOOP.create_task(
-                    send_message_to_all_js_clients(
-                        citeproc_sub(json.dumps(LASTBIB), cwd)))
-            EVENT_LOOP.run_in_executor(None, citeproc)
-        finally:
-            CITEPROCING = False
+async def citeproc():
+    await CITEPROC.wait()
+    CITEPROC.clear()
+    if BIBCACHE.json:
+        global LASTBIB
+        LASTBIB, cwd, prevbib, BIBCACHE.json = (
+            await uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd),
+            BIBCACHE.cwd,
+            LASTBIB,
+            None)
+        if prevbib != LASTBIB:
+            citehtml = await EVENT_LOOP.run_in_executor(
+                None, citeproc_sub, json.dumps(LASTBIB), cwd)
+            EVENT_LOOP.create_task(
+                send_message_to_all_js_clients(citehtml))
+    EVENT_LOOP.create_task(citeproc())
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
@@ -310,7 +309,7 @@ def citeproc_sub(jsondump, cwd):
     return stdout.decode()
 
 
-def uniqueciteprocdict(bibinfo, cwd):
+async def uniqueciteprocdict(bibinfo, cwd):
     # keep citeblocks only
     bibinfo['blocks'] = list(
         citeblock_generator(bibinfo['blocks'], 'Cite'))
@@ -407,7 +406,7 @@ async def md2htmlblocks(content, cwd):
 
     global BIBCACHE
     BIBCACHE.cwd, BIBCACHE.json = cwd, jsonout
-    EVENT_LOOP.run_in_executor(None, citeproc)
+    CITEPROC.set()
 
     jsonlist = (
         json.dumps({"blocks": [j],
