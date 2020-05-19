@@ -56,7 +56,6 @@ from itertools import count
 import json
 import os
 from pathlib import Path
-import random
 import re
 import traceback
 import uvloop
@@ -345,7 +344,8 @@ async def uniqueciteprocdict(jsondict, cwd):
     except (FileNotFoundError, IndexError, KeyError, TypeError):
         pass
 
-    return json.dumps(bibinfo), random.getrandbits(32)
+    info = json.dumps(bibinfo)
+    return info, hash(info)
 
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
