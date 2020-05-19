@@ -301,15 +301,17 @@ function extractReferences(newEl)
         const cache = _textcitesCache[textcite];
         if(cache === undefined) {
             hasNewTextCites = true;
-            // Visually indicate that this has been identified as new textcite
-            // and is beeing fetched
-            el.style.origColor = el.style.color;
-            el.style.color = 'lightgray';
             _textcitesCache[textcite] = {elements: [el]};
+            // Visually indicate that this textcite is being fetched
+            el.classList.add('loading');
         } else {
             cache.elements.push(el);
-            if(cache.html !== undefined)
+            if(cache.html !== undefined) {
                 el.innerHTML = cache.html;
+            } else {
+                // Visually indicate that this textcite is being fetched
+                el.classList.add('loading');
+            }
         }
 
         referenceElements.push(el);
@@ -364,8 +366,6 @@ function citeprocResultEvent(message)
         for(const el of referenceElements) {
             i++;
             const textcite = el._referenceTextcite;
-            // Remove visual indication as this textcite has been fetched successfully
-            el.style.color = el.style.origColor;
             if(updatedTextcites[textcite])
                 continue;
             updatedTextcites[textcite] = true;
@@ -381,8 +381,11 @@ function citeprocResultEvent(message)
             if(textciteCache.html == html)
                 continue;
             textciteCache.html = html;
-            for(const tmp of textciteCache.elements)
+            for(const tmp of textciteCache.elements) {
                 tmp.innerHTML = html;
+                // Remove visual indication as this textcite has been fetched successfully
+                tmp.classList.remove('loading');
+            }
         }
     }
     if(i != citeprocCitations.length) {

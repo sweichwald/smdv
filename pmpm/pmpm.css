@@ -433,3 +433,8 @@ div#status {
     width: 100%;
     z-index: 10;
 }
+
+/* Loading citations */
+.loading {
+    color: lightgray;
+}
