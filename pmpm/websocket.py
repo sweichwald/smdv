@@ -292,18 +292,20 @@ async def citeproc():
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
 async def citeproc_sub(jsondump, bibid, cwd):
-    call = ["pandoc",
-            "--from", "json", "--to", "html5",
-            "--filter", "pandoc-citeproc",
-            "--"+ARGS.math]
-    proc = await asyncio.subprocess.create_subprocess_exec(
-        *call,
-        cwd=cwd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL)
-    stdout, stderr = await proc.communicate(jsondump.encode())
-    return stdout.decode()
+    if jsondump and bibid:
+        call = ["pandoc",
+                "--from", "json", "--to", "html5",
+                "--filter", "pandoc-citeproc",
+                "--"+ARGS.math]
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            *call,
+            cwd=cwd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL)
+        stdout, stderr = await proc.communicate(jsondump.encode())
+        return stdout.decode()
+    return None
 
 
 async def uniqueciteprocdict(jsondict, cwd):
