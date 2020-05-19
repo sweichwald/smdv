@@ -75,6 +75,8 @@ const footnotes = document.getElementById('footnotes');
 const footnotesChildren = footnotes.children;
 const references = document.getElementById('references');
 const referencesTitle = document.getElementById('bibliography');
+let contentBibid;
+let citeprocBibid;
 let suppressBibliography = false;
 let fpath = (new URLSearchParams(window.location.search)).get('filepath');
 
@@ -276,33 +278,20 @@ function extractFootnotes(newEl, newFn)
 
 function extractReferences(newEl)
 {
-    let hasNewTextCites = false;
     const referenceElements = [];
 
     for(const el of newEl.getElementsByClassName('citation')) {
         const citekeys = el.getAttribute('data-cites').split(' ');
         const textcite = el.textContent;
 
-        // Save all used citekeys for this citation (in order!)
-        el._referenceCitekeys = citekeys;
-
         // Save textcite for later.
         el._referenceTextcite = textcite;
-
-        // Update _citekeyRefcounts.
-        for(const citekey of citekeys) {
-            if(_citekeyRefcounts[citekey] === undefined)
-                _citekeyRefcounts[citekey] = 1;
-            else
-                _citekeyRefcounts[citekey]++;
-        }
 
         // If we know this textcite's html, directly use it
         // Otherwise, we have to request it from the websocket
         // In any case, push this element into the textcitesCache
         const cache = _textcitesCache[textcite];
         if(cache === undefined) {
-            hasNewTextCites = true;
             _textcitesCache[textcite] = {elements: [el]};
             // Visually indicate that this textcite is being fetched
             el.classList.add('loading');
@@ -321,8 +310,6 @@ function extractReferences(newEl)
 
     // Save all reference elements.
     newEl._referenceElements = referenceElements;
-
-    return hasNewTextCites;
 }
 
 function replaceRefList(refList)
@@ -349,14 +336,14 @@ function showHideRefList()
         references.style.display = 'none';
 }
 
-function citeprocResultEvent(message)
+function updateRefsFromCiteprocResult()
 {
-    console.log(performance.now(), 'citeproc result event');
+    // Save bibid of bibid that is used now
+    citeprocBibid = _lastCiteprocBibid;
 
-    // parse the HTML in a temporary container
+     // parse the HTML in a temporary container
     const div = document.createElement('div');
-    div.innerHTML = message.html;
-    console.log(message.bibid); // bibid
+    div.innerHTML = _lastCiteprocHtml;
 
     // Update textcites
     let i = 0;
@@ -404,11 +391,27 @@ function citeprocResultEvent(message)
         replaceRefList(refList);
         showHideRefList();
     }
-
-    console.log(performance.now(), 'citeproc done');
 }
 
-const _citekeyRefcounts = {};
+let _lastCiteprocHtml;
+let _lastCiteprocBibid;
+function citeprocResultEvent(html, bibid)
+{
+    console.log(performance.now(), 'citeproc result event');
+    _lastCiteprocHtml = html;
+    _lastCiteprocBibid = bibid;
+
+    if(_lastCiteprocBibid == contentBibid) {
+        // Citeproc result is for htmlblocks that we have already loaded
+        updateRefsFromCiteprocResult();
+        console.log(performance.now(), 'done');
+    } else {
+        // Citeproc result is for htmlblocks that is either already gone or not yet loaded
+        // Thus, delay/skip for now.
+        console.log('delay/skip');
+    }
+}
+
 const _textcitesCache = {};
 let _refsElement;
 function updateBodyFromBlocks(contentnew, referenceSectionTitle)
@@ -420,7 +423,6 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     let firstChangeCompare;
     let mustRenumber = false;
     let renumberNum;
-    let hasNewTextCites = false;
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -465,8 +467,7 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
                 mustRenumber = true;
 
             // Check references
-            if(extractReferences(newEl))
-                hasNewTextCites = true;
+            extractReferences(newEl);
 
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
@@ -494,23 +495,11 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     while(children.length > i) {
         const block = container.lastElementChild;
 
-        // Update references
+        // Update references textcites cache
+        // We do not remove elements form bibliography here. A new citeproc result will come anyway (or has come already)
         const referenceElements = block._referenceElements;
         if(referenceElements !== undefined) {
             for(const el of referenceElements) {
-
-                // Remove refcounts in _citekeyRefcounts
-                for(const citekey of el._referenceCitekeys) {
-                    if(_citekeyRefcounts[citekey] == 1) {
-                        delete _citekeyRefcounts[citekey];
-                        // Remove this from references, if present
-                        const refEl = document.getElementById('ref-'+citekey);
-                        if(refEl)
-                            refEl.parentNode.removeChild(refEl);
-                    } else
-                        _citekeyRefcounts[citekey]--;
-                }
-
                 // Remove refcounts from _textcitesCache
                 const textcite = el._referenceTextcite;
                 const cache = _textcitesCache[textcite];
@@ -564,9 +553,12 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 
     console.log(performance.now(), 'end updateBody');
 
-    // Render references asynchronously
-    if(hasNewTextCites)
-        getWebsocket().then(websocket => websocket.send('citeproc'));
+    // If a citeproc response came in already for this content (before the htmlblocks!), apply it now
+    if(contentBibid != citeprocBibid && _lastCiteprocBibid == contentBibid) {
+        console.log('now using citeproc result');
+        updateRefsFromCiteprocResult();
+        console.log(performance.now(), 'done');
+    }
 }
 
 // websockets
@@ -609,21 +601,28 @@ async function initWebsocket()
         const message = JSON.parse(event.data);
 
         if(message.htmlblocks !== undefined) {
-            console.log(message.bibid); // bibid
             // update page
+            contentBibid = message.bibid;
             suppressBibliography = message["suppress-bibliography"];
             updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);
         } else {
+            if(message.bibid !== undefined) {
+                // Async citeproc result
+                citeprocResultEvent(message.html, message.bibid);
+                return;
+            }
             if(message.error !== undefined) {
+                // backend error
                 showStatusWarning(message.error);
                 return;
             }
             if(message.status !== undefined) {
+                // progressbar
                 showStatusInfo(message.status);
                 return;
             }
-            // Async citeproc result
-            citeprocResultEvent(message);
+
+            // Shouldn't happen
             return;
         }
 
