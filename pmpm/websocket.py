@@ -347,7 +347,7 @@ def uniqueciteprocdict(jsondict, cwd):
         bibinfo['meta']['csl_mtime_'] = (
             cwd / bibinfo['meta']['csl']['c'][0]['c']
             ).stat().st_mtime
-    except (FileNotFoundError, KeyError, TypeError):
+    except (FileNotFoundError, IndexError, KeyError, TypeError):
         pass
 
     return bibinfo

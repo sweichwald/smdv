@@ -122,7 +122,6 @@ pmpm will be started automatically at startup if you do `systemd --user enable p
 **Ideas & TODOs:**
 
 * improve the csl pandoc-citeproc style to link to the article's source url provided in the bibfile
-* fade-out highlight changed content
 * kate plugin?
 
 
