@@ -438,3 +438,10 @@ div#status {
 .loading {
     color: lightgray;
 }
+
+.highlight {
+    background-color: #fdf6e3;
+}
+.fade {
+    transition: background-color .373s linear;
+}

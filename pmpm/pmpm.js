@@ -145,6 +145,25 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
     return currentChildNodes[nchildren-1];
 }
 
+function highlight(el)
+{
+    let origHasClass = el.hasAttribute('class');
+    el.classList.add('highlight');
+    setTimeout(() => {
+        el.classList.add('fade');
+        el.classList.remove('highlight');
+        const func = () => {
+            el.removeEventListener('transitionend', func);
+            // reset transition and class attribute. otherwise the next
+            // update will find this el in findFirstChangedChild()
+            el.classList.remove('fade');
+            if(!origHasClass)
+                el.removeAttribute('class');
+        };
+        el.addEventListener('transitionend', func);
+    }, 200);
+}
+
 function scrollToFirstChange(scrollTarget, scrollTargetCompare)
 {
     if(scrollTargetCompare && scrollTarget.childNodes.length) {
@@ -164,28 +183,11 @@ function scrollToFirstChange(scrollTarget, scrollTargetCompare)
     const highlight = scrollTargetCompare &&
         (newpos - window.pageYOffset > 4 * windowheight20
          || newpos - window.pageYOffset < - 2 * windowheight20);
-    let origBg, origHasStyleAttribute;
-    if (highlight) {
-        origBg = scrollTarget.style.background;
-        origHasStyleAttribute = scrollTarget.hasAttribute('style');
-        scrollTarget.style.background = "#fdf6e3";
-    }
+    if (highlight)
+        highlight(scrollTarget);
 
     // scroll
     window.scrollTo({top: newpos});
-
-    // fade
-    if (highlight) {
-        scrollTarget.style.background = origBg;
-        scrollTarget.style.transition = "background-color .573s linear";
-        // reset transition and style attribute. otherwise the next update will find the same
-        // scrollTarget in findFirstChangedChild()
-        setTimeout(() => {
-            scrollTarget.style.transition = '';
-            if(!origHasStyleAttribute)
-                scrollTarget.removeAttribute('style');
-        }, 573);
-    }
 }
 
 // Load local links to .md files directly in this pmpm instance
