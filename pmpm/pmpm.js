@@ -353,7 +353,8 @@ function citeprocResultEvent(message)
 
     // parse the HTML in a temporary container
     const div = document.createElement('div');
-    div.innerHTML = message;
+    div.innerHTML = message.html;
+    console.log(message.bibid); // bibid
 
     // Update textcites
     let i = 0;
@@ -606,6 +607,7 @@ async function initWebsocket()
         const message = JSON.parse(event.data);
 
         if(message.htmlblocks !== undefined) {
+            console.log(message.bibid); // bibid
             // update page
             suppressBibliography = message["suppress-bibliography"];
             updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);

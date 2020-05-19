@@ -45,7 +45,7 @@ json2htmlblock:
     onclick event allows pmpm.js to load .md links in pmpm
 md2htmlblocks:
     --> md2json
-    BIBQUEUE = (uniqueciteprocdict, cwd) for citeproc
+    BIBQUEUE = (uniqueciteprocdict, hash, cwd) for citeproc
     --> json2htmlblock (asynchronously)
 """
 
@@ -56,6 +56,7 @@ from itertools import count
 import json
 import os
 from pathlib import Path
+import random
 import re
 import traceback
 import uvloop
@@ -187,12 +188,14 @@ async def new_filepath_request(fpath):
 
 
 async def process_new_content(fpath, content):
-    htmlblocks, supbib, refsectit = await md2htmlblocks(content, fpath.parent)
+    htmlblocks, supbib, refsectit, bibid = await md2htmlblocks(content,
+                                                               fpath.parent)
     message = {
         "filepath": str(fpath.relative_to(ARGS.home)),
         "htmlblocks": htmlblocks,
         "suppress-bibliography": supbib,
         "reference-section-title": refsectit,
+        "bibid": bibid,
         }
     EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
@@ -280,14 +283,15 @@ async def citeproc():
             q, BIBQUEUE, BIBPROCESSING = BIBQUEUE, None, True
             citehtml = await citeproc_sub(*q)
             EVENT_LOOP.create_task(
-                send_message_to_all_js_clients(citehtml))
+                send_message_to_all_js_clients({'html': citehtml,
+                                                'bibid': q[1]}))
         finally:
             BIBPROCESSING = False
         EVENT_LOOP.create_task(citeproc())
 
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
-async def citeproc_sub(jsondump, cwd):
+async def citeproc_sub(jsondump, bibid, cwd):
     call = ["pandoc",
             "--from", "json", "--to", "html5",
             "--filter", "pandoc-citeproc",
@@ -340,7 +344,7 @@ async def uniqueciteprocdict(bibinfo, cwd):
     except (FileNotFoundError, IndexError, KeyError, TypeError):
         pass
 
-    return json.dumps(bibinfo)
+    return json.dumps(bibinfo), random.getrandbits(32)
 
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
@@ -398,7 +402,8 @@ async def md2htmlblocks(content, cwd):
     jsonout = await md2json(content, cwd)
 
     global BIBQUEUE
-    BIBQUEUE = await uniqueciteprocdict(jsonout, cwd), cwd
+    BIBQUEUE = *(await uniqueciteprocdict(jsonout, cwd)), cwd
+    bibid = BIBQUEUE[1]
     EVENT_LOOP.create_task(citeproc())
 
     jsonlist = (
@@ -422,4 +427,5 @@ async def md2htmlblocks(content, cwd):
 
     return (htmlblocks,
             supbib,
-            refsectit)
+            refsectit,
+            bibid)
