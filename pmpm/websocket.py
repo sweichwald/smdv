@@ -39,6 +39,7 @@ citeproc_sub:
     cached subprocess pandoc call
 bibsubdict:
     given a pandoc json return only meta data relevant for citeproc
+uniqueciteprocdict
 checkforbibdifferences:
     ensures up to date references uniqueifying bibinfo hashes and
     checking whether it has previously been cached

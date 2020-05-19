@@ -175,6 +175,7 @@ The reference section can be placed anywhere in the document by
 placing the placeholder divs accordingly:
 
 ::: {#refs}
+_references will be placed here_
 :::
 
 or
