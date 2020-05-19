@@ -280,16 +280,14 @@ async def citeproc():
     CITEPROC.clear()
     if BIBCACHE.json:
         global LASTBIB
-        LASTBIB, cwd, prevbib, BIBCACHE.json = (
+        LASTBIB, cwd, BIBCACHE.json = (
             await uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd),
             BIBCACHE.cwd,
-            LASTBIB,
             None)
-        if prevbib != LASTBIB:
-            citehtml = await EVENT_LOOP.run_in_executor(
-                None, citeproc_sub, json.dumps(LASTBIB), cwd)
-            EVENT_LOOP.create_task(
-                send_message_to_all_js_clients(citehtml))
+        citehtml = await EVENT_LOOP.run_in_executor(
+            None, citeproc_sub, json.dumps(LASTBIB), cwd)
+        EVENT_LOOP.create_task(
+            send_message_to_all_js_clients(citehtml))
     EVENT_LOOP.create_task(citeproc())
 
 
