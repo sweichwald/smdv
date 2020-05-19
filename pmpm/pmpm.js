@@ -341,7 +341,7 @@ function updateRefsFromCiteprocResult()
     // Save bibid of bibid that is used now
     citeprocBibid = _lastCiteprocBibid;
 
-     // parse the HTML in a temporary container
+    // parse the HTML in a temporary container
     const div = document.createElement('div');
     div.innerHTML = _lastCiteprocHtml;
 
@@ -360,14 +360,16 @@ function updateRefsFromCiteprocResult()
                 continue;
             updatedTextcites[textcite] = true;
 
-            // Update all with the same textcite, if HTML has changed
-            const html = citeprocCitations[i-1].innerHTML;
+            // Update all citations with the same textcite with new html, if HTML has changed
+            const citeprocCitation = citeprocCitations[i-1];
             const textciteCache = _textcitesCache[textcite];
-            if(!textciteCache) {
-                // Can in principle happen due to async-ness of everything
-                showStatusWarning('Received citations for old request. Maybe try reloading?');
-                return;
-            }
+
+            // Not-found citations are displayed as "???" by default, replace with citekey
+            // Must be done before html compare
+            for(const missing of citeprocCitation.getElementsByClassName('citeproc-not-found'))
+                missing.textContent = missing.getAttribute('data-reference-id');
+
+            const html = citeprocCitation.innerHTML;
             if(textciteCache.html == html)
                 continue;
             textciteCache.html = html;
@@ -377,11 +379,6 @@ function updateRefsFromCiteprocResult()
                 tmp.classList.remove('loading');
             }
         }
-    }
-    if(i != citeprocCitations.length) {
-        // Can in principle happen due to async-ness of everything
-        showStatusWarning('Received citations for different request. Maybe try reloading?');
-        return;
     }
 
     // Replace reference list with new reference list, if any
@@ -398,6 +395,11 @@ let _lastCiteprocBibid;
 function citeprocResultEvent(html, bibid)
 {
     console.log(performance.now(), 'citeproc result event');
+    if(bibid == _lastCiteprocBibid) {
+        console.log('we already have that');
+        return;
+    }
+
     _lastCiteprocHtml = html;
     _lastCiteprocBibid = bibid;
 
