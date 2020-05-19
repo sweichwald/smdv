@@ -45,21 +45,18 @@ json2htmlblock:
     onclick event allows pmpm.js to load .md links in pmpm
 md2htmlblocks:
     --> md2json
-    BIBCACHE.json and cwd (for citeproc)
+    BIBQUEUE = (uniqueciteprocdict, cwd) for citeproc
     --> json2htmlblock (asynchronously)
 """
 
 
 import asyncio
 from async_lru import alru_cache
-from collections import namedtuple
-from functools import lru_cache
 from itertools import count
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import traceback
 import uvloop
 import websockets
@@ -76,8 +73,8 @@ EVENT_LOOP = asyncio.get_event_loop()
 QUEUE = None
 PROCESSING = False
 
-BIBCACHE = namedtuple('CACHE', ['cwd', 'json'])
-CITEPROC = asyncio.Event()
+BIBQUEUE = None
+BIBPROCESSING = False
 LASTBIB = None
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
@@ -259,7 +256,7 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         EVENT_LOOP.create_task(processqueue())
     # assume it can only be a citeproc request then
     else:
-        CITEPROC.set()
+        EVENT_LOOP.create_task(citeproc())
 
 
 async def send_message_to_all_js_clients(message):
@@ -276,34 +273,32 @@ async def send_message_to_all_js_clients(message):
 
 
 async def citeproc():
-    await CITEPROC.wait()
-    CITEPROC.clear()
-    if BIBCACHE.json:
-        global LASTBIB
-        LASTBIB, cwd, BIBCACHE.json = (
-            await uniqueciteprocdict(BIBCACHE.json.copy(), BIBCACHE.cwd),
-            BIBCACHE.cwd,
-            None)
-        citehtml = await EVENT_LOOP.run_in_executor(
-            None, citeproc_sub, json.dumps(LASTBIB), cwd)
-        EVENT_LOOP.create_task(
-            send_message_to_all_js_clients(citehtml))
-    EVENT_LOOP.create_task(citeproc())
+    global BIBPROCESSING
+    global BIBQUEUE
+    if not BIBPROCESSING and BIBQUEUE:
+        try:
+            q, BIBQUEUE, BIBPROCESSING = BIBQUEUE, None, True
+            citehtml = await citeproc_sub(*q)
+            EVENT_LOOP.create_task(
+                send_message_to_all_js_clients(citehtml))
+        finally:
+            BIBPROCESSING = False
+        EVENT_LOOP.create_task(citeproc())
 
 
-@lru_cache(maxsize=LRU_CACHE_SIZE)
-def citeproc_sub(jsondump, cwd):
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def citeproc_sub(jsondump, cwd):
     call = ["pandoc",
             "--from", "json", "--to", "html5",
             "--filter", "pandoc-citeproc",
             "--"+ARGS.math]
-    proc = subprocess.Popen(
-        call,
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        *call,
         cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(jsondump.encode())
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(jsondump.encode())
     return stdout.decode()
 
 
@@ -345,7 +340,7 @@ async def uniqueciteprocdict(bibinfo, cwd):
     except (FileNotFoundError, IndexError, KeyError, TypeError):
         pass
 
-    return bibinfo
+    return json.dumps(bibinfo)
 
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
@@ -402,9 +397,9 @@ async def md2htmlblocks(content, cwd):
 
     jsonout = await md2json(content, cwd)
 
-    global BIBCACHE
-    BIBCACHE.cwd, BIBCACHE.json = cwd, jsonout
-    CITEPROC.set()
+    global BIBQUEUE
+    BIBQUEUE = await uniqueciteprocdict(jsonout, cwd), cwd
+    EVENT_LOOP.create_task(citeproc())
 
     jsonlist = (
         json.dumps({"blocks": [j],
