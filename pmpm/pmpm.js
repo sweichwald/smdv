@@ -177,14 +177,14 @@ function scrollToFirstChange(scrollTarget, scrollTargetCompare)
     // fade
     if (highlight) {
         scrollTarget.style.background = origBg;
-        scrollTarget.style.transition = "background-color .382s linear";
+        scrollTarget.style.transition = "background-color .573s linear";
         // reset transition and style attribute. otherwise the next update will find the same
         // scrollTarget in findFirstChangedChild()
         setTimeout(() => {
             scrollTarget.style.transition = '';
             if(!origHasStyleAttribute)
                 scrollTarget.removeAttribute('style');
-        }, 382);
+        }, 573);
     }
 }
 

@@ -6,7 +6,7 @@ monitorpipe():
 ReadPipeProtocol:
     buffers piped in content,
     queues and triggers processqueue when eof or \0 received,
-    PIPE_LOST on connection_lost
+    PIPE_LOST event on connection_lost
 progressbar
 processqueue:
     processes queue when triggered and not yet PROCESSING
@@ -33,16 +33,15 @@ citeproc:
     `--filter pandoc-citeproc` is sloow,
     thus JSCLIENTS request bibliographic information only when needed,
     which is responded to by citeproc,
-    or cachedreferences() triggers citeproc upon changed bibinfo to flush
+    or checkforbibdifferences() triggers citeproc upon changed bibinfo to flush
     new bibdetails to all clients
-uptodatereferences:
-    ensures up to date references uniqueifying bibinfo hashes
+citeproc_sub:
+    cached subprocess pandoc call
 bibsubdict:
     given a pandoc json return only meta data relevant for citeproc
-cachedreferences:
-    prepares bibliography files and exising inline bibentries
-    for inclusion into pandoc json directly
-bib2json
+checkforbibdifferences:
+    ensures up to date references uniqueifying bibinfo hashes and
+    checking whether it has previously been cached
 md2json
 json2htmlblock:
     alru_cached block-wise conversion,
@@ -78,11 +77,12 @@ JSCLIENTS = set()
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 EVENT_LOOP = asyncio.get_event_loop()
 
-CACHE = namedtuple('CACHE', ['cwd', 'fpath', 'json'])
+CACHE = namedtuple('CACHE', ['cwd', 'json'])
 
 QUEUE = None
 PROCESSING = False
 CITEPROCING = False
+LASTBIB = None
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
 PIPE_LOST = asyncio.Event()
@@ -103,14 +103,13 @@ def run_websocket_server():
 
 
 async def monitorpipe():
-    EVENT_LOOP.create_task(
-        EVENT_LOOP.connect_read_pipe(
-            ReadPipeProtocol,
-            os.fdopen(
-                os.open(
-                    NAMED_PIPE,
-                    os.O_NONBLOCK | os.O_RDONLY),
-                'rb')))
+    await EVENT_LOOP.connect_read_pipe(
+        ReadPipeProtocol,
+        os.fdopen(
+            os.open(
+                NAMED_PIPE,
+                os.O_NONBLOCK | os.O_RDONLY),
+            'rb'))
     await PIPE_LOST.wait()
     PIPE_LOST.clear()
     EVENT_LOOP.create_task(monitorpipe())
@@ -119,11 +118,9 @@ async def monitorpipe():
 class ReadPipeProtocol(asyncio.Protocol):
 
     def __init__(self, *args, **kwargs):
-        super(ReadPipeProtocol, self).__init__(*args, **kwargs)
         self._received = []
 
     def data_received(self, data):
-        super(ReadPipeProtocol, self).data_received(data)
         self._received.append(data)
         if data.endswith(b'\0'):
             self._queue()
@@ -138,7 +135,6 @@ class ReadPipeProtocol(asyncio.Protocol):
         self._received = []
 
     def connection_lost(self, transport):
-        super(ReadPipeProtocol, self).connection_lost(transport)
         PIPE_LOST.set()
 
 
@@ -147,9 +143,7 @@ async def progressbar():
         await asyncio.sleep(.382)
         EVENT_LOOP.create_task(
             send_message_to_all_js_clients(
-                {
-                    "status": ' · '*k
-                    }))
+                {"status": ' 🞄 '*k}))
 
 
 async def processqueue():
@@ -158,16 +152,14 @@ async def processqueue():
     if not PROCESSING and QUEUE:
         try:
             PROCESSING = EVENT_LOOP.create_task(progressbar())
-            q = QUEUE
-            QUEUE = None
+            q, QUEUE = QUEUE, None
             if q[0] == 'pipe':
                 await new_pipe_content(q[1])
-            elif q[0] == 'filepath':
+            # assume it can only be a filepath request then
+            else:
                 await new_filepath_request(q[1])
         except Exception as e:
-            message = {
-                "error": str(e)
-                }
+            message = {"error": str(e)}
             traceback.print_exc()
             EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
         finally:
@@ -179,8 +171,8 @@ async def processqueue():
 
 async def new_pipe_content(instrlist):
     instr = b''.join(instrlist)
-    # filepath passed along
     content = instr.decode()
+    # filepath passed along
     if content.startswith('<!-- filepath:'):
         lines = content.split('\n')
         # given path is relative to home or absolute
@@ -201,7 +193,7 @@ async def new_filepath_request(fpath):
 
 
 async def process_new_content(fpath, content):
-    htmlblocks, supbib, refsectit = await md2htmlblocks(content, fpath)
+    htmlblocks, supbib, refsectit = await md2htmlblocks(content, fpath.parent)
     message = {
         "filepath": str(fpath.relative_to(ARGS.home)),
         "htmlblocks": htmlblocks,
@@ -268,13 +260,13 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
         global QUEUE
         QUEUE = ('filepath', ARGS.home / message[9:])
         EVENT_LOOP.create_task(processqueue())
-    elif message.startswith('citeproc'):
+    # assume it can only be a citeproc request then
+    else:
         EVENT_LOOP.run_in_executor(None, citeproc)
 
 
-# send updated body contents to javascript clients
 async def send_message_to_all_js_clients(message):
-    """ send a message to all js clients
+    """ send updated body contents to javascript clients
 
     Args:
         message: dict: the message to send
@@ -291,15 +283,19 @@ def citeproc():
     if not CITEPROCING:
         try:
             CITEPROCING = True
-            jsonf = CACHE.json
+            jsonf, cwd = CACHE.json.copy(), CACHE.cwd
             jsonf['blocks'] = list(
                 citeblock_generator(CACHE.json['blocks'], 'Cite'))
-
+            global LASTBIB
+            LASTBIB = uniqueciteprocdict(jsonf, cwd)
+            jsonf['uniqueciteprocdict_'] = LASTBIB
             EVENT_LOOP.create_task(
                 send_message_to_all_js_clients(
                     citeproc_sub(json.dumps(jsonf).encode())))
         finally:
             CITEPROCING = False
+            EVENT_LOOP.create_task(
+                checkforbibdifferences(CACHE.json, CACHE.cwd))
 
 
 @lru_cache(maxsize=LRU_CACHE_SIZE)
@@ -318,40 +314,7 @@ def citeproc_sub(jsondump):
     return stdout.decode()
 
 
-async def checkforbibdifferences(jsondict, cwd):
-    bibinfo = await bibsubdict(jsondict)
-    if not bibinfo['meta']:
-        return
-    # add bibliography_mtimes to uniqueify
-    bibliography = bibinfo['meta'].get('bibliography', None)
-    if bibliography and bibliography['t'] == 'MetaInlines':
-        bibfiles = [cwd / bibliography['c'][0]['c']]
-    elif bibliography:
-        bibfiles = [cwd / b['c'][0]['c']
-                    for b in bibliography['c']]
-    else:
-        bibfiles = []
-    bibinfo['bibfiles_'] = [(str(b), b.stat().st_mtime)
-                            for b in bibfiles]
-    # add csl_mtime to uniqueify
-    try:
-        bibinfo['meta']['csl_mtime_'] = (
-            cwd / bibinfo['meta']['csl']['c'][0]['c']
-            ).stat().st_mtime
-    except (FileNotFoundError, KeyError, TypeError):
-        pass
-    bibinfo['cwd_'] = str(cwd)
-    await triggerciteproc(json.dumps(bibinfo))
-
-
-# if not cached, it will trigger citeproc() distributing new bibinfo
-# to all clients (as those may not know about the changes)
-@alru_cache(maxsize=LRU_CACHE_SIZE)
-async def triggerciteproc(bibinfo):
-    EVENT_LOOP.run_in_executor(None, citeproc)
-
-
-async def bibsubdict(jsondict):
+def bibsubdict(jsondict):
     metakeys = ['bibliography',
                 'csl',
                 'link-citations',
@@ -361,6 +324,41 @@ async def bibsubdict(jsondict):
                      for k in metakeys & jsondict['meta'].keys()}}
 
 
+def uniqueciteprocdict(jsondict, cwd):
+    bibinfo = bibsubdict(jsondict)
+    if not bibinfo['meta']:
+        return
+
+    # add bibliography_mtimes to uniqueify
+    bibliography = bibinfo['meta'].get('bibliography', None)
+    if bibliography and bibliography['t'] == 'MetaInlines':
+        bibfiles = [cwd / bibliography['c'][0]['c']]
+    elif bibliography:
+        bibfiles = [cwd / b['c'][0]['c']
+                    for b in bibliography['c']]
+    else:
+        bibfiles = []
+    bibinfo['bibfiles_'] = [b.stat().st_mtime
+                            for b in bibfiles]
+
+    # add csl_mtime to uniqueify
+    try:
+        bibinfo['meta']['csl_mtime_'] = (
+            cwd / bibinfo['meta']['csl']['c'][0]['c']
+            ).stat().st_mtime
+    except (FileNotFoundError, KeyError, TypeError):
+        pass
+
+    return bibinfo
+
+
+async def checkforbibdifferences(jsondict, cwd):
+    bibinfo = uniqueciteprocdict(jsondict, cwd)
+    if not LASTBIB == bibinfo:
+        EVENT_LOOP.run_in_executor(None, citeproc)
+
+
+@alru_cache(maxsize=LRU_CACHE_SIZE)
 async def md2json(content, cwd):
     proc = await asyncio.subprocess.create_subprocess_exec(
         "pandoc",
@@ -396,7 +394,8 @@ async def json2htmlblock(jsontxt, cwd, outtype):
     return [hash(html), html]
 
 
-async def md2htmlblocks(content, fpath) -> str:
+# do not cache --> checkforbibdifferences
+async def md2htmlblocks(content, cwd):
     """ convert markdown to html using pandoc markdown
 
     Args:
@@ -406,8 +405,6 @@ async def md2htmlblocks(content, fpath) -> str:
         html: str: the resulting html
 
     """
-    cwd = fpath.parent
-
     outtype = "html5"
     if content.startswith("<!-- revealjs -->\n"):
         content = content[18:]
@@ -416,7 +413,7 @@ async def md2htmlblocks(content, fpath) -> str:
     jsonout = await md2json(content, cwd)
 
     global CACHE
-    CACHE.cwd, CACHE.fpath, CACHE.json = cwd, fpath, jsonout
+    CACHE.cwd, CACHE.json = cwd, jsonout
     EVENT_LOOP.create_task(
         checkforbibdifferences(CACHE.json, CACHE.cwd))
 
@@ -428,6 +425,7 @@ async def md2htmlblocks(content, fpath) -> str:
 
     htmlblocks = [await json2htmlblock(j, cwd, outtype)
                   for j in jsonlist]
+
     try:
         supbib = jsonout['meta']['suppress-bibliography']['c'] is True
     except KeyError:
