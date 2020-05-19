@@ -306,7 +306,8 @@ async def citeproc_sub(jsondump, bibid, cwd):
     return stdout.decode()
 
 
-async def uniqueciteprocdict(bibinfo, cwd):
+async def uniqueciteprocdict(jsondict, cwd):
+    bibinfo = jsondict.copy()
     # keep citeblocks only
     bibinfo['blocks'] = list(
         citeblock_generator(bibinfo['blocks'], 'Cite'))
@@ -323,7 +324,7 @@ async def uniqueciteprocdict(bibinfo, cwd):
 
     # no bibliography or bibentries given
     if not bibinfo['meta']:
-        return
+        return (None, None)
 
     # add bibliography_mtimes_ to uniqueify
     bibliography = bibinfo['meta'].get('bibliography', None)
