@@ -86,7 +86,7 @@ PIPE_LOST = asyncio.Event()
 def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
-    ARGS = parse_args()
+    ARGS = parse_args(websocket=True)
     EVENT_LOOP.set_default_executor(
         concurrent.futures.ProcessPoolExecutor(max_workers=None))
     WEBSOCKETS_SERVER = websockets.serve(serve_client,

@@ -18,7 +18,7 @@ class limport:
         return getattr(self._package, get)
 
 
-def parse_args(args=None) -> argparse.Namespace:
+def parse_args(args=None, websocket=False) -> argparse.Namespace:
     """ populate the pmpm command line arguments
 
     Args:
@@ -50,25 +50,26 @@ def parse_args(args=None) -> argparse.Namespace:
         choices=["mathml", "katex"],
         help="whether to use pandoc's mathml or katex math mode",
     )
-    single_shot_arguments = parser.add_mutually_exclusive_group()
-    single_shot_arguments.add_argument(
-        "--status",
-        action="store_true",
-        default=os.environ.get("PMPM_DEFAULT_SERVER_STATUS", False),
-        help="ask status of the pmpm server",
-    )
-    single_shot_arguments.add_argument(
-        "--start",
-        action="store_true",
-        default=os.environ.get("PMPM_DEFAULT_START_SERVER", False),
-        help="start the pmpm server (without doing anything else)",
-    )
-    single_shot_arguments.add_argument(
-        "--stop",
-        action="store_true",
-        default=os.environ.get("PMPM_DEFAULT_STOP_SERVER", False),
-        help="stop the pmpm server (without doing anything else)",
-    )
+    if not websocket:
+        single_shot_arguments = parser.add_mutually_exclusive_group()
+        single_shot_arguments.add_argument(
+            "--status",
+            action="store_true",
+            default=os.environ.get("PMPM_DEFAULT_SERVER_STATUS", False),
+            help="ask status of the pmpm server",
+        )
+        single_shot_arguments.add_argument(
+            "--start",
+            action="store_true",
+            default=os.environ.get("PMPM_DEFAULT_START_SERVER", False),
+            help="start the pmpm server (without doing anything else)",
+        )
+        single_shot_arguments.add_argument(
+            "--stop",
+            action="store_true",
+            default=os.environ.get("PMPM_DEFAULT_STOP_SERVER", False),
+            help="stop the pmpm server (without doing anything else)",
+        )
     parsed_args = parser.parse_args(args=args)
     parsed_args.home = Path(parsed_args.home).expanduser().resolve()
     if not parsed_args.home.is_dir():
