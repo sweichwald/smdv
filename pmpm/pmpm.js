@@ -567,14 +567,16 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 function showStatusWarning(text)
 {
     status.style.display = 'block';
-    status.style.backgroundColor = 'yellow';
+    status.style.backgroundColor = '#bf0303';
+    status.style.color = '#fefefe';
     status.textContent = text;
 }
 
 function showStatusInfo(text)
 {
     status.style.display = 'block';
-    status.style.backgroundColor = 'lightgray';
+    status.style.backgroundColor = '#444';
+    status.style.color = '#fefefe';
     status.textContent = text;
 }
 

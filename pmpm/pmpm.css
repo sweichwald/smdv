@@ -436,7 +436,7 @@ div#status {
 
 /* Loading citations */
 .loading {
-    color: lightgray;
+    color: #898887;
 }
 
 .highlight {
@@ -448,5 +448,5 @@ div#status {
 
 /* Not found citations */
 .citeproc-not-found {
-    color: red;
+    color: #ad0625;
 }
