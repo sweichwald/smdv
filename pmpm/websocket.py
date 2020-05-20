@@ -62,7 +62,7 @@ import subprocess
 import traceback
 import uvloop
 import websockets
-from .utils import citeblock_generator, parse_args
+from .utils import BASE_DIR, citeblock_generator, parse_args
 
 
 LRU_CACHE_SIZE = 8192
@@ -97,6 +97,15 @@ def run_websocket_server():
         os.mkfifo(NAMED_PIPE)
     EVENT_LOOP.create_task(monitorpipe())
     EVENT_LOOP.create_task(citeproc())
+    print('\n'
+          f"pmpm-websocket started (port {ARGS.port})\n\n"
+          f"Pipe new content to {NAMED_PIPE}, for example,\n"
+          f"    echo '# Hello World!' > {NAMED_PIPE}\n\n"
+          'Direct your browser to\n'
+          f"    file://{(BASE_DIR / '../client/pmpm.html').resolve()}"
+          + (f"?port={ARGS.port}\n" if ARGS.port != '9877' else '\n') +
+          "to view the rendered markdown"
+          )
     EVENT_LOOP.run_forever()
 
 
