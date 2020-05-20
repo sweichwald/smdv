@@ -52,11 +52,13 @@ md2htmlblocks:
 
 import asyncio
 from async_lru import alru_cache
+import concurrent.futures
 from itertools import count
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import traceback
 import uvloop
 import websockets
@@ -85,6 +87,8 @@ def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args()
+    EVENT_LOOP.set_default_executor(
+        concurrent.futures.ProcessPoolExecutor(max_workers=None))
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
@@ -363,21 +367,26 @@ async def md2json(content, cwd):
     return json.loads(stdout.decode())
 
 
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def json2htmlblock(jsontxt, cwd, outtype):
+    return await EVENT_LOOP.run_in_executor(
+        None, json2htmlblock_sub, jsontxt, cwd, outtype)
+
+
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
-async def json2htmlblock(jsontxt, cwd, outtype):
-    proc = await asyncio.subprocess.create_subprocess_exec(
-        "pandoc",
-        "--from", "json",
-        "--to", outtype,
-        "--"+ARGS.math,
+def json2htmlblock_sub(jsontxt, cwd, outtype):
+    proc = subprocess.Popen(
+        ["pandoc",
+         "--from", "json",
+         "--to", outtype,
+         "--"+ARGS.math],
         cwd=cwd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL)
-    stdout, stderr = await proc.communicate(jsontxt.encode())
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL)
+    stdout, stderr = proc.communicate(jsontxt.encode())
     html = urlRegex.sub(
         f'\\1="file://{cwd}/\\2" onclick="return localLinkClickEvent(this);"',
         stdout.decode())
