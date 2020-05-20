@@ -404,9 +404,8 @@ let _lastCiteprocHtml;
 let _lastCiteprocBibid;
 function citeprocResultEvent(html, bibid)
 {
-    console.log(performance.now(), 'citeproc result event');
     if(bibid == _lastCiteprocBibid) {
-        console.log('we already have that');
+        // We already have this
         return;
     }
 
@@ -416,11 +415,9 @@ function citeprocResultEvent(html, bibid)
     if(_lastCiteprocBibid == contentBibid) {
         // Citeproc result is for htmlblocks that we have already loaded
         updateRefsFromCiteprocResult();
-        console.log(performance.now(), 'done');
     } else {
         // Citeproc result is for htmlblocks that is either already gone or not yet loaded
         // Thus, delay/skip for now.
-        console.log('delay/skip');
     }
 }
 
@@ -428,7 +425,6 @@ const _textcitesCache = {};
 let _refsElement;
 function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 {
-    console.log(performance.now(), 'start updateBody')
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
     let firstChange;
@@ -563,14 +559,9 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     } else
         referencesTitle.style.display = "none";
 
-    console.log(performance.now(), 'end updateBody');
-
     // If a citeproc response came in already for this content (before the htmlblocks!), apply it now
-    if(contentBibid != citeprocBibid && _lastCiteprocBibid == contentBibid) {
-        console.log('now using citeproc result');
+    if(contentBibid != citeprocBibid && _lastCiteprocBibid == contentBibid)
         updateRefsFromCiteprocResult();
-        console.log(performance.now(), 'done');
-    }
 }
 
 // websockets
