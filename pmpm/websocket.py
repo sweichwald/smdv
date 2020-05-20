@@ -1,35 +1,94 @@
+"""
+run_websocket_server():
+    entry point, mkfifo, start websocket server and monitorpipe
+monitorpipe():
+    connects read NAMED_PIPE, reconnects upon PIPE_LOST event
+ReadPipeProtocol:
+    buffers piped in content,
+    queues and triggers processqueue when eof or \0 received,
+    PIPE_LOST event on connection_lost
+progressbar
+processqueue:
+    processes queue when triggered and not yet PROCESSING
+    --> new_pipe_content or new_filepath_request
+new_pipe_content:
+    decodes input, resolves filepath if given
+    --> process_new_content
+new_filepath_request:
+    retrieves file
+    --> process_new_content
+process_new_content:
+    compiles message to distribute to JSCLIENTS;
+serve_client / register_client / unregister_client:
+    handles JSCLIENTS
+    --> handle_message
+readfile
+handle_message:
+    JSCLIENTS send either
+        filepath request: queue and trigger processqueue
+    or
+        citeproc: trigger citeproc
+send_message_to_all_js_clients
+citeproc:
+    `--filter pandoc-citeproc` is sloow,
+    thus JSCLIENTS request bibliographic information only when needed,
+    which is responded to by citeproc,
+    or citeproc is triggered upon changed bibinfo to distribute
+    new bibdetails to all clients
+citeproc_sub:
+    cached subprocess pandoc call
+uniqueciteprocdict
+md2json
+json2htmlblock:
+    alru_cached block-wise conversion,
+    relative links are rewritten as file:// links,
+    onclick event allows pmpm.js to load .md links in pmpm
+md2htmlblocks:
+    --> md2json
+    BIBQUEUE = (uniqueciteprocdict, hash, cwd) for citeproc
+    --> json2htmlblock (asynchronously)
+"""
+
+
 import asyncio
+from async_lru import alru_cache
 import concurrent.futures
-from functools import lru_cache
+from itertools import count
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import traceback
+import uvloop
 import websockets
+from .utils import BASE_DIR, citeblock_generator, parse_args
 
-from .utils import parse_args
 
 LRU_CACHE_SIZE = 8192
 
 JSCLIENTS = set()
 
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 EVENT_LOOP = asyncio.get_event_loop()
 
-DISTRIBUTING = None
+QUEUE = None
+PROCESSING = False
+
+BIBQUEUE = None
+BIBPROCESSING = False
+LASTBIB = None
 
 NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
-
 PIPE_LOST = asyncio.Event()
 
 
 def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
-    ARGS = parse_args()
+    ARGS = parse_args(websocket=True)
     EVENT_LOOP.set_default_executor(
-        concurrent.futures.ThreadPoolExecutor(max_workers=None))
+        concurrent.futures.ProcessPoolExecutor(max_workers=None))
     WEBSOCKETS_SERVER = websockets.serve(serve_client,
                                          "localhost",
                                          ARGS.port)
@@ -37,18 +96,27 @@ def run_websocket_server():
     if not NAMED_PIPE.is_fifo():
         os.mkfifo(NAMED_PIPE)
     EVENT_LOOP.create_task(monitorpipe())
+    EVENT_LOOP.create_task(citeproc())
+    print('\n'
+          f"pmpm-websocket started (port {ARGS.port})\n\n"
+          f"Pipe new content to {NAMED_PIPE}, for example,\n"
+          f"    echo '# Hello World!' > {NAMED_PIPE}\n\n"
+          'Direct your browser to\n'
+          f"    file://{(BASE_DIR / '../client/pmpm.html').resolve()}"
+          + (f"?port={ARGS.port}\n" if ARGS.port != '9877' else '\n') +
+          "to view the rendered markdown"
+          )
     EVENT_LOOP.run_forever()
 
 
 async def monitorpipe():
-    EVENT_LOOP.create_task(
-        EVENT_LOOP.connect_read_pipe(
-            ReadPipeProtocol,
-            os.fdopen(
-                os.open(
-                    NAMED_PIPE,
-                    os.O_NONBLOCK | os.O_RDONLY),
-                'rb')))
+    EVENT_LOOP.create_task(EVENT_LOOP.connect_read_pipe(
+        ReadPipeProtocol,
+        os.fdopen(
+            os.open(
+                NAMED_PIPE,
+                os.O_NONBLOCK | os.O_RDONLY),
+            'rb')))
     await PIPE_LOST.wait()
     PIPE_LOST.clear()
     EVENT_LOOP.create_task(monitorpipe())
@@ -57,60 +125,91 @@ async def monitorpipe():
 class ReadPipeProtocol(asyncio.Protocol):
 
     def __init__(self, *args, **kwargs):
-        super(ReadPipeProtocol, self).__init__(*args, **kwargs)
         self._received = []
 
     def data_received(self, data):
-        super(ReadPipeProtocol, self).data_received(data)
         self._received.append(data)
         if data.endswith(b'\0'):
-            EVENT_LOOP.create_task(new_pipe_content(self._received))
-            self._received = []
+            self._queue()
 
     def eof_received(self):
-        EVENT_LOOP.create_task(new_pipe_content(self._received))
+        self._queue()
+
+    def _queue(self):
+        global QUEUE
+        QUEUE = ('pipe', self._received)
+        EVENT_LOOP.create_task(processqueue())
+        self._received = []
 
     def connection_lost(self, transport):
-        super(ReadPipeProtocol, self).connection_lost(transport)
         PIPE_LOST.set()
 
 
+async def progressbar():
+    for k in count(1):
+        await asyncio.sleep(.300)
+        EVENT_LOOP.create_task(
+            send_message_to_all_js_clients(
+                {"status": ' 🞄 '*k}))
+
+
+async def processqueue():
+    global PROCESSING
+    global QUEUE
+    if not PROCESSING and QUEUE:
+        try:
+            PROCESSING = EVENT_LOOP.create_task(progressbar())
+            q, QUEUE = QUEUE, None
+            if q[0] == 'pipe':
+                await new_pipe_content(q[1])
+            # assume it can only be a filepath request then
+            else:
+                await new_filepath_request(q[1])
+        except Exception as e:
+            message = {"error": str(e)}
+            traceback.print_exc()
+            EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
+        finally:
+            PROCESSING.cancel()
+            await asyncio.sleep(.300)
+            PROCESSING = False
+            EVENT_LOOP.create_task(processqueue())
+
+
 async def new_pipe_content(instrlist):
-    global DISTRIBUTING
     instr = b''.join(instrlist)
-    if instr != b'':
-        # filepath passed along
-        content = instr.decode()
-        if content.startswith('<!-- filepath:'):
-            lines = content.split('\n')
-            # given path is relative to home or absolute
-            fpath = ARGS.home / lines.pop(0)[14:-4]
-            content = '\n'.join(lines)
-        else:
-            fpath = ARGS.home / "LIVE"
-        if DISTRIBUTING:
-            DISTRIBUTING.cancel()
-        # absolute fpath
-        fpath = fpath.resolve()
-        DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
-            fpath,
-            content))
+    content = instr.decode()
+    # filepath passed along
+    if content.startswith('<!-- filepath:'):
+        lines = content.split('\n')
+        # given path is relative to home or absolute
+        fpath = ARGS.home / lines.pop(0)[14:-4]
+        content = '\n'.join(lines)
+    else:
+        fpath = ARGS.home / "LIVE"
+    # absolute fpath
+    fpath = fpath.resolve()
+    await process_new_content(fpath, content)
 
 
-async def distribute_new_content(fpath, content):
-    try:
-        message = {
-            "fpath": str(os.path.relpath(fpath, ARGS.home)),
-            "htmlblocks": await md2htmlblocks(content, fpath.parent),
-            }
-    except concurrent.futures.CancelledError:
-        return
-    except Exception as e:
-        message = {
-            "error": str(e)
-            }
-        traceback.print_exc()
-    asyncio.shield(send_message_to_all_js_clients(message))
+async def new_filepath_request(fpath):
+    content = await EVENT_LOOP.run_in_executor(None,
+                                               readfile,
+                                               fpath)
+    await process_new_content(fpath, content)
+
+
+async def process_new_content(fpath, content):
+    htmlblocks, supbib, refsectit, bibid = await md2htmlblocks(content,
+                                                               fpath.parent)
+    message = {
+        "filepath": str(fpath.relative_to(ARGS.home)),
+        "htmlblocks": htmlblocks,
+        "suppress-bibliography": supbib,
+        "reference-section-title": refsectit,
+        "bibid": bibid,
+        }
+    EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
 
 async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
@@ -124,7 +223,7 @@ async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
     await register_client(client)
     try:
         async for message in client:
-            await handle_message(client, message)
+            EVENT_LOOP.create_task(handle_message(client, message))
     finally:
         EVENT_LOOP.create_task(unregister_client(client))
 
@@ -166,30 +265,17 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
                          message: str):
     """ handle a message sent by one of the clients
     """
-    global DISTRIBUTING
-    if DISTRIBUTING:
-        DISTRIBUTING.cancel()
-
-    fpath = ARGS.home / message
-    try:
-        content = await EVENT_LOOP.run_in_executor(None,
-                                                   readfile,
-                                                   fpath)
-    except (FileNotFoundError, IsADirectoryError) as e:
-        DISTRIBUTING = EVENT_LOOP.create_task(send_message_to_all_js_clients({
-            "error": str(e)
-            }))
-        traceback.print_exc()
-        return
-
-    DISTRIBUTING = EVENT_LOOP.create_task(distribute_new_content(
-        fpath,
-        content))
+    if message.startswith('filepath:'):
+        global QUEUE
+        QUEUE = ('filepath', ARGS.home / message[9:])
+        EVENT_LOOP.create_task(processqueue())
+    # assume it can only be a citeproc request then
+    else:
+        EVENT_LOOP.create_task(citeproc())
 
 
-# send updated body contents to javascript clients
 async def send_message_to_all_js_clients(message):
-    """ send a message to all js clients
+    """ send updated body contents to javascript clients
 
     Args:
         message: dict: the message to send
@@ -201,30 +287,113 @@ async def send_message_to_all_js_clients(message):
             EVENT_LOOP.create_task(client.send(jsonmessage))
 
 
-def md2json(content, cwd):
-    proc = subprocess.Popen(
-        ["pandoc",
-         "--from", "markdown+emoji",
-         "--to", "json",
-         "--filter", "pandoc-citeproc",
-         "--"+ARGS.math],
+async def citeproc():
+    global BIBPROCESSING
+    global BIBQUEUE
+    if not BIBPROCESSING and BIBQUEUE:
+        try:
+            q, BIBQUEUE, BIBPROCESSING = BIBQUEUE, None, True
+            if q[0] and q[1]:
+                citehtml = await EVENT_LOOP.create_task(citeproc_sub(*q))
+            else:
+                citehtml = ''
+            EVENT_LOOP.create_task(
+                send_message_to_all_js_clients({'html': citehtml,
+                                                'bibid': q[1]}))
+        finally:
+            BIBPROCESSING = False
+        EVENT_LOOP.create_task(citeproc())
+
+
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def citeproc_sub(jsondump, bibid, cwd):
+    if jsondump and bibid:
+        call = ["pandoc",
+                "--from", "json", "--to", "html5",
+                "--filter", "pandoc-citeproc",
+                "--"+ARGS.math]
+        proc = await asyncio.subprocess.create_subprocess_exec(
+            *call,
+            cwd=cwd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL)
+        stdout, stderr = await proc.communicate(jsondump.encode())
+        return stdout.decode()
+    return ''
+
+
+async def uniqueciteprocdict(jsondict, cwd):
+    # keep only the blocks and bib-relevant metadata
+    metakeys = {'bibliography',
+                'csl',
+                'link-citations',
+                'nocite',
+                'references'}
+    bibinfo = {'pandoc-api-version': jsondict['pandoc-api-version']}
+    bibinfo['meta'] = {k: jsondict['meta'][k]
+                       for k in jsondict['meta'].keys() & metakeys}
+    # copy citeblocks only
+    bibinfo['blocks'] = list(
+        citeblock_generator(jsondict['blocks'], 'Cite'))
+
+    # no bibliography or bibentries given
+    if not bibinfo['meta']:
+        return (None, None)
+
+    # add bibliography_mtimes_ to uniqueify
+    bibliography = bibinfo['meta'].get('bibliography', None)
+    if bibliography:
+        if bibliography['t'] == 'MetaInlines':
+            bibfiles = [cwd / bibliography['c'][0]['c']]
+        else:
+            bibfiles = [cwd / b['c'][0]['c']
+                        for b in bibliography['c']]
+        bibinfo['bibliography_mtimes_'] = [b.stat().st_mtime
+                                           for b in bibfiles]
+
+    # add csl_mtime_ to uniqueify
+    try:
+        bibinfo['csl_mtime_'] = (
+            cwd / bibinfo['meta']['csl']['c'][0]['c']
+            ).stat().st_mtime
+    except (FileNotFoundError, IndexError, KeyError, TypeError):
+        pass
+
+    info = json.dumps(bibinfo)
+    return info, hash(info)
+
+
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def md2json(content, cwd):
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        "pandoc",
+        "--from", "markdown+emoji",
+        "--to", "json",
+        "--"+ARGS.math,
         cwd=cwd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL)
-    stdout, stderr = proc.communicate(content.encode())
-    return json.loads(stdout)
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(content.encode())
+    return json.loads(stdout.decode())
+
+
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def json2htmlblock(jsontxt, cwd, outtype):
+    return await EVENT_LOOP.run_in_executor(
+        None, json2htmlblock_sub, jsontxt, cwd, outtype)
 
 
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
-@lru_cache(maxsize=LRU_CACHE_SIZE)
-def json2htmlblock(jsontxt, cwd, outtype):
-    call = ["pandoc",
-            "--from", "json", "--to", outtype, "--"+ARGS.math]
+def json2htmlblock_sub(jsontxt, cwd, outtype):
     proc = subprocess.Popen(
-        call,
+        ["pandoc",
+         "--from", "json",
+         "--to", outtype,
+         "--"+ARGS.math],
         cwd=cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -236,18 +405,8 @@ def json2htmlblock(jsontxt, cwd, outtype):
     return [hash(html), html]
 
 
-async def jsonlist2htmlblocks(jsontxts, cwd, outtype):
-    blocking_tasks = [
-        EVENT_LOOP.run_in_executor(None,
-                                   json2htmlblock,
-                                   jsontxt,
-                                   cwd,
-                                   outtype)
-        for jsontxt in jsontxts]
-    return await asyncio.gather(*blocking_tasks)
-
-
-async def md2htmlblocks(content, cwd) -> str:
+# do not cache --> checkforbibdifferences
+async def md2htmlblocks(content, cwd):
     """ convert markdown to html using pandoc markdown
 
     Args:
@@ -257,23 +416,39 @@ async def md2htmlblocks(content, cwd) -> str:
         html: str: the resulting html
 
     """
-    jsonout = await EVENT_LOOP.run_in_executor(
-        None,
-        md2json,
-        content,
-        cwd)
-    blocks = jsonout['blocks']
-
-    jsonlist = []
-    for bid, b in enumerate(blocks):
-        jsonout['blocks'] = [b]
-        jsonstr = json.dumps(jsonout)
-        jsonlist.append(jsonstr)
-
     outtype = "html5"
     if content.startswith("<!-- revealjs -->\n"):
+        content = content[18:]
         outtype = "revealjs"
 
-    htmlblocks = await jsonlist2htmlblocks(jsonlist, cwd, outtype)
+    jsonout = await EVENT_LOOP.create_task(md2json(content, cwd))
 
-    return htmlblocks
+    global BIBQUEUE
+    BIBQUEUE = *(await uniqueciteprocdict(jsonout, cwd)), cwd
+    bibid = BIBQUEUE[1]
+    EVENT_LOOP.create_task(citeproc())
+
+    jsonlist = (
+        json.dumps({"blocks": [j],
+                    "meta": {},
+                    "pandoc-api-version": jsonout['pandoc-api-version']})
+        for j in jsonout['blocks'])
+
+    htmlblocks = await asyncio.gather(*(
+        json2htmlblock(j, cwd, outtype)
+        for j in jsonlist))
+
+    try:
+        supbib = jsonout['meta']['suppress-bibliography']['c'] is True
+    except KeyError:
+        supbib = False
+
+    try:
+        refsectit = jsonout['meta']['reference-section-title']['c'][0]['c']
+    except (IndexError, KeyError):
+        refsectit = ''
+
+    return (htmlblocks,
+            supbib,
+            refsectit,
+            bibid)

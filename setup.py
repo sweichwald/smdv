@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     setup(
         name="pmpm",
-        version="0.1.2",
+        version="0.1.3",
         description=("pmpm: pandoc markdown preview machine, "
                      "a simple markdown previewer"),
         long_description=long_description,
@@ -41,7 +41,9 @@ if __name__ == "__main__":
         packages=['pmpm'],
         include_package_data=True,
         data_files=[
-            "pmpm/pmpm.html",
-            "pmpm/pmpm.css",
+            "client/pmpm.js",
+            "client/pmpm.html",
+            "client/pmpm.css",
+            "client/pmpm_revealjs.html",
         ]
     )

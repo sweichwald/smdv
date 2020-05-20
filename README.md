@@ -5,7 +5,7 @@
 _Forked from [flaport/smdv][forkedfrom] on 2020-05-01;
 original copyright and license notices are preserved in [LICENSE](LICENSE)
 and the same [GNU General Public License v3.0][gpl3] applies to this repository;
-[all changes][changes] are documented._
+[all changes][changes] are documented; 3rd party LICENSES are included in the respective subfolders._
 
 
 
@@ -38,7 +38,7 @@ and basically can be implemented for any editor by regularly piping the current 
   ([vim2pmpm][vim] does this automatically)
 * for __increased speed__,
   pmpm aims to make use of async where possible
-  and implements a block-wise lru_cached pandoc-backed rendering threadpool
+  and implements block-wise async lru_cached pandoc-backed rendering
 * for __increased speed__, pmpm's javascript updates only the changed blocks instead of re-setting the entire innerhtml
 * pmpm's default html layout is based on [killercup's css](https://gist.github.com/killercup/5917178)
   and looks nice
@@ -98,6 +98,22 @@ pandoc file.md \
 ```
 
 
+## systemd
+
+You can create a systemd unit for pmpm in `HOME/.config/systemd/user/pmpm.service` with contents like
+```
+[Unit]
+Description=Pandoc markdown preview machine (pmpm)
+
+[Service]
+ExecStart=%h/.local/bin/pmpm-websocket --math katex --home %h --port 9877
+
+[Install]
+WantedBy=default.target
+```
+For mathml math mode replace katex with mathml.
+Then you can start/restart/stop pmpm with standard systemd commands like `systemd --user start pmpm`.
+pmpm will be started automatically at startup if you do `systemd --user enable pmpm`.
 
 ---
 
@@ -106,7 +122,6 @@ pandoc file.md \
 **Ideas & TODOs:**
 
 * improve the csl pandoc-citeproc style to link to the article's source url provided in the bibfile
-* fade-out highlight changed content
 * kate plugin?
 
 
@@ -159,6 +174,7 @@ The reference section can be placed anywhere in the document by
 placing the placeholder divs accordingly:
 
 ::: {#refs}
+_references will be placed here_
 :::
 
 or

@@ -20,8 +20,10 @@ function loadStyle(src, integrity, crossOrigin)
     const style = document.createElement('link');
     style.rel = 'stylesheet';
     style.type = 'text/css';
-    style.integrity = integrity;
-    style.crossOrigin = crossOrigin;
+    if(integrity !== undefined)
+        style.integrity = integrity;
+    if(crossOrigin !== undefined)
+        style.crossOrigin = crossOrigin;
     style.href = src;
     const promise = new Promise((resolve, reject) => {
         style.onload = resolve;
@@ -38,8 +40,8 @@ async function getViz() {
     if(!_vizLoaded) {
         if(_vizLoadPromise === undefined) {
             _vizLoadPromise = Promise.all([
-                loadScript('https://cdn.tutorialjinni.com/viz.js/2.1.2/viz.js'),
-                loadScript('https://cdn.tutorialjinni.com/viz.js/2.1.2/lite.render.js')
+                loadScript('./3rdparty/viz.js/2.1.2/viz.js'),
+                loadScript('./3rdparty/viz.js/2.1.2/lite.render.js')
             ]);
         }
         await _vizLoadPromise;
@@ -55,8 +57,8 @@ async function getKatex() {
     if(_katex === undefined) {
         if(_katexLoadPromise === undefined) {
             _katexLoadPromise = Promise.all([
-                loadScript('https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/katex.min.js', 'sha384-y23I5Q6l+B6vatafAwxRu/0oK/79VlbSz7Q9aiSZUvyWYIYsd+qj+o24G5ZU2zJz', 'anonymous'),
-                loadStyle('https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/katex.min.css', 'sha384-zB1R0rpPzHqg7Kpt0Aljp8JPLqbXI3bhnPWROx27a9N0Ll6ZP/+DiW/UqRcLbRjq', 'anonymous')
+                loadScript('./3rdparty/katex/0.11.1/katex.min.js'),
+                loadStyle('./3rdparty/katex/0.11.1/katex.min.css')
             ]);
         }
         await _katexLoadPromise;
@@ -73,7 +75,12 @@ const children = container.children;
 const hashAttr = 'data-hash';
 const footnotes = document.getElementById('footnotes');
 const footnotesChildren = footnotes.children;
-let fpath = (new URLSearchParams(window.location.search)).get('fpath');
+const references = document.getElementById('references');
+const referencesTitle = document.getElementById('bibliography');
+let contentBibid;
+let citeprocBibid;
+let suppressBibliography = false;
+let fpath = (new URLSearchParams(window.location.search)).get('filepath');
 
 
 // body
@@ -142,6 +149,51 @@ function findFirstChangedChild(currentChildNodes, previousChildNodes)
     return currentChildNodes[nchildren-1];
 }
 
+function highlight(el)
+{
+    let origHasClass = el.hasAttribute('class');
+    el.classList.add('highlight');
+    setTimeout(() => {
+        el.classList.add('fade');
+        el.classList.remove('highlight');
+        const func = () => {
+            el.removeEventListener('transitionend', func);
+            // reset transition and class attribute. otherwise the next
+            // update will find this el in findFirstChangedChild()
+            el.classList.remove('fade');
+            if(!origHasClass)
+                el.removeAttribute('class');
+        };
+        el.addEventListener('transitionend', func);
+    }, 200);
+}
+
+function scrollToFirstChange(scrollTarget, scrollTargetCompare)
+{
+    if(scrollTargetCompare && scrollTarget.childNodes.length) {
+        // TODO: Delay until async katex / viz rendering is done?
+        scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
+        if(scrollTarget.nodeType != Node.ELEMENT_NODE)
+            scrollTarget = scrollTarget.parentNode;
+    }
+
+    const windowheight20 = window.innerHeight / 5;
+    const newpos = scrollTarget.getBoundingClientRect().top +
+                      window.pageYOffset - windowheight20;
+
+    // highlight
+    // only highlight if scrolling more than 80% / 40% down / up
+    // not on initial page load, if we start scrolled down
+    const shouldHighlight = scrollTargetCompare &&
+        (newpos - window.pageYOffset > 4 * windowheight20
+         || newpos - window.pageYOffset < - 2 * windowheight20);
+    if (shouldHighlight)
+        highlight(scrollTarget);
+
+    // scroll
+    window.scrollTo({top: newpos});
+}
+
 // Load local links to .md files directly in this pmpm instance
 // called for local src/href attributes, see websocket.py
 function localLinkClickEvent(el)
@@ -153,7 +205,7 @@ function localLinkClickEvent(el)
     if(!newFullFpath.endsWith('.md'))
         return true;
 
-    getWebsocket().then((websocket) => websocket.send(newFullFpath));
+    getWebsocket().then((websocket) => websocket.send('filepath:' + newFullFpath));
     return false;
 }
 
@@ -196,7 +248,7 @@ function extractFootnotes(newEl, newFn)
         // Do not set special ids and hrefs. Otherwise, the automatic
         // change detection in findFirstChangedChild() may just always
         // detect the first footnote.
-        // But: attributes like _footenoteHref and _footnoteAref 
+        // But: attributes like _footenoteHref and _footnoteAref
         // are ignored by isEqualNode(), so we use them and do
         // scrolling in our own onclick event handler.
         li.removeAttribute('id'); // not unique
@@ -226,12 +278,157 @@ function extractFootnotes(newEl, newFn)
     return true;
 }
 
-function updateBodyFromBlocks(contentnew)
+function extractReferences(newEl)
+{
+    const referenceElements = [];
+
+    for(const el of newEl.getElementsByClassName('citation')) {
+        const citekeys = el.getAttribute('data-cites').split(' ');
+        const textcite = el.textContent;
+
+        // Save textcite for later.
+        el._referenceTextcite = textcite;
+
+        // If we know this textcite's html, directly use it
+        // Otherwise, we have to request it from the websocket
+        // In any case, push this element into the textcitesCache
+        const cache = _textcitesCache[textcite];
+        if(cache === undefined) {
+            _textcitesCache[textcite] = {elements: [el]};
+            // Visually indicate that this textcite is being fetched
+            el.classList.add('loading');
+        } else {
+            cache.elements.push(el);
+            if(cache.html !== undefined) {
+                el.innerHTML = cache.html;
+            } else {
+                // Visually indicate that this textcite is being fetched
+                el.classList.add('loading');
+            }
+        }
+
+        referenceElements.push(el);
+    }
+
+    // Save all reference elements.
+    newEl._referenceElements = referenceElements;
+}
+
+function replaceRefList(refList)
+{
+    // Remove old references element, if any
+    if(_refsElement !== undefined && _refsElement !== refList)
+        _refsElement.parentNode.removeChild(_refsElement);
+    _refsElement = refList;
+
+    // Insert in correct place
+    const refs = document.getElementById('refs');
+    if(refs)
+        refs.appendChild(refList);
+    else
+        references.appendChild(refList);
+}
+
+function showHideRefList()
+{
+    if(_refsElement !== undefined) {
+        // If a references list exists, show/hide it
+        const hide = suppressBibliography || contentBibid === null;
+        _refsElement.style.display = hide ? 'none' : 'block';
+        // Separately hide the references section at the bottom.
+        // Hide this also if the references list is in a custom <div id="refs"></div>
+        // Otherwise, a possible references title will still be shown
+        references.style.display = hide || _refsElement.parentNode !== references  ? 'none' : 'block';
+    } else {
+        // If no references list exists, hide the references section at the bottom
+        // This is to also hide a possible references title
+        references.style.display = 'none';
+    }
+}
+
+function updateRefsFromCiteprocResult()
+{
+    // Save bibid of bibid that is used now
+    citeprocBibid = _lastCiteprocBibid;
+
+    // parse the HTML in a temporary container
+    const div = document.createElement('div');
+    div.innerHTML = _lastCiteprocHtml;
+
+    // Update textcites
+    let i = 0;
+    const updatedTextcites = {};
+    const citeprocCitations = div.getElementsByClassName('citation');
+    for(const block of children) {
+        const referenceElements = block._referenceElements;
+        if(referenceElements === undefined)
+            continue;
+        for(const el of referenceElements) {
+            i++;
+            const textcite = el._referenceTextcite;
+            if(updatedTextcites[textcite])
+                continue;
+            updatedTextcites[textcite] = true;
+
+            // Update all citations with the same textcite with new html, if HTML has changed
+            const citeprocCitation = citeprocCitations[i-1];
+            const textciteCache = _textcitesCache[textcite];
+
+            // Not-found citations are displayed as "???" by default, replace with citekey
+            // Must be done before html compare
+            for(const missing of citeprocCitation.getElementsByClassName('citeproc-not-found'))
+                missing.textContent = missing.getAttribute('data-reference-id');
+
+            const html = citeprocCitation.innerHTML;
+            if(textciteCache.html == html)
+                continue;
+            textciteCache.html = html;
+            for(const tmp of textciteCache.elements) {
+                tmp.innerHTML = html;
+                // Remove visual indication as this textcite has been fetched successfully
+                tmp.classList.remove('loading');
+            }
+        }
+    }
+
+    // Replace reference list with new reference list, if any
+    const refList = div.querySelector('.references');
+    if(refList) {
+        refList.id = 'pmpmRefs'; // avoid collision with custom <div id="refs">
+        replaceRefList(refList);
+        showHideRefList();
+    }
+}
+
+let _lastCiteprocHtml;
+let _lastCiteprocBibid;
+function citeprocResultEvent(html, bibid)
+{
+    if(bibid == _lastCiteprocBibid) {
+        // We already have this
+        return;
+    }
+
+    _lastCiteprocHtml = html;
+    _lastCiteprocBibid = bibid;
+
+    if(_lastCiteprocBibid == contentBibid) {
+        // Citeproc result is for htmlblocks that we have already loaded
+        updateRefsFromCiteprocResult();
+    } else {
+        // Citeproc result is for htmlblocks that is either already gone or not yet loaded
+        // Thus, delay/skip for now.
+    }
+}
+
+const _textcitesCache = {};
+let _refsElement;
+function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
-    let scrollTarget;
-    let scrollTargetCompare;
+    let firstChange;
+    let firstChangeCompare;
     let mustRenumber = false;
     let renumberNum;
     for(i = 0; i < contentnew.length; i++) {
@@ -257,9 +454,9 @@ function updateBodyFromBlocks(contentnew)
                     mustRenumber = true;
                 }
 
-                if (scrollTarget === undefined) {
-                    scrollTarget = children[i];
-                    scrollTargetCompare = children[j];
+                if (firstChange === undefined) {
+                    firstChange = children[i];
+                    firstChangeCompare = children[j];
                 }
             }
         } else {
@@ -277,12 +474,15 @@ function updateBodyFromBlocks(contentnew)
             if(extractFootnotes(newEl, newFn))
                 mustRenumber = true;
 
+            // Check references
+            extractReferences(newEl);
+
             // asynchronously render latex and viz if necessary
             renderBlockContentsAsync(newEl);
 
-            if (scrollTarget === undefined) {
-                scrollTarget = children[i];
-                scrollTargetCompare = children[i+1];
+            if (firstChange === undefined) {
+                firstChange = children[i];
+                firstChangeCompare = children[i+1];
             }
         }
 
@@ -301,40 +501,83 @@ function updateBodyFromBlocks(contentnew)
 
     // Now all non-needed elements from original content should be at the end and we can remove them
     while(children.length > i) {
-        container.removeChild(container.lastElementChild);
+        const block = container.lastElementChild;
+
+        // Update references textcites cache
+        // We do not remove elements form bibliography here. A new citeproc result will come anyway (or has come already)
+        const referenceElements = block._referenceElements;
+        if(referenceElements !== undefined) {
+            for(const el of referenceElements) {
+                // Remove refcounts from _textcitesCache
+                const textcite = el._referenceTextcite;
+                const cache = _textcitesCache[textcite];
+                if(cache.elements.length == 1)
+                    delete _textcitesCache[textcite];
+                else {
+                    // TODO: Maybe not optimal if there are many same textcites?
+                    cache.elements = cache.elements.filter(e => e !== el);
+                }
+            }
+        }
+
+        // Remove block and footnote block
+        container.removeChild(block);
         footnotes.removeChild(footnotes.lastElementChild);
     }
 
-    if (scrollTarget !== undefined) {
+    if (firstChange !== undefined) {
         // Show/hide footnotes
         const showFootnotes = footnotes.lastElementChild.start > 1 || footnotes.lastElementChild.childElementCount;
         footnotes.parentNode.style.display = showFootnotes ? 'block': 'none';
 
-        // scroll first changed block into view
-        // TODO: Delay until async katex / viz rendering is done?
-        if(scrollTargetCompare && scrollTarget.childNodes.length) {
-            scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
-            if(scrollTarget.nodeType != Node.ELEMENT_NODE)
-                scrollTarget = scrollTarget.parentNode;
+        if(_refsElement !== undefined) {
+            // Check if
+            // a) current reference list got removed from document
+            //    Happens when custom <div id="refs"></div> is removed
+            // b) current reference list is at bottom, but a custom <div id="refs'> just got added
+            // In either case: Move _refsElement to new location
+            if(!_refsElement.isConnected ||
+                (_refsElement.parentNode === references && document.getElementById('refs')))
+                replaceRefList(_refsElement);
         }
-        window.scrollTo({top:
-            scrollTarget.getBoundingClientRect().top +
-            window.pageYOffset - window.innerHeight / 5})
     }
+
+    // Show/hide bibliography
+    // Do before scrolling because this can change the scroll position for custom <div id="refs">
+    // Do outside firstchange !== undefined check, because this can change without htmlblocks changes
+    showHideRefList();
+
+    if(firstChange !== undefined) {
+        // scroll first changed block into view
+        scrollToFirstChange(firstChange, firstChangeCompare);
+    }
+
+    // Set references title
+    if(referenceSectionTitle !== "") {
+        referencesTitle.textContent = referenceSectionTitle;
+        referencesTitle.style.display = "";
+    } else
+        referencesTitle.style.display = "none";
+
+    // If a citeproc response came in already for this content (before the htmlblocks!), apply it now
+    if(contentBibid != citeprocBibid && _lastCiteprocBibid == contentBibid)
+        updateRefsFromCiteprocResult();
 }
 
 // websockets
 function showStatusWarning(text)
 {
     status.style.display = 'block';
-    status.style.backgroundColor = 'yellow';
+    status.style.backgroundColor = '#bf0303';
+    status.style.color = '#fefefe';
     status.textContent = text;
 }
 
 function showStatusInfo(text)
 {
     status.style.display = 'block';
-    status.style.backgroundColor = 'lightgray';
+    status.style.backgroundColor = '#444';
+    status.style.color = '#fefefe';
     status.textContent = text;
 }
 
@@ -361,18 +604,37 @@ async function initWebsocket()
     _websocket.onmessage = function (event) {
         // parse message
         const message = JSON.parse(event.data);
-        if(message.error !== undefined) {
-            showStatusWarning(message.error);
+
+        if(message.htmlblocks !== undefined) {
+            // update page
+            contentBibid = message.bibid;
+            suppressBibliography = message["suppress-bibliography"];
+            updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);
+        } else {
+            if(message.bibid !== undefined) {
+                // Async citeproc result
+                citeprocResultEvent(message.html, message.bibid);
+                return;
+            }
+            if(message.error !== undefined) {
+                // backend error
+                showStatusWarning(message.error);
+                return;
+            }
+            if(message.status !== undefined) {
+                // progressbar
+                showStatusInfo(message.status);
+                return;
+            }
+
+            // Shouldn't happen
             return;
         }
 
-        // update page
-        updateBodyFromBlocks(message.htmlblocks);
-
         // change browser url
-        if (message.fpath != fpath) {
-            const url = "?fpath=" + encodeURIComponent(message.fpath);
-            fpath = message.fpath;
+        if (message.filepath != fpath) {
+            const url = "?filepath=" + encodeURIComponent(message.filepath);
+            fpath = message.filepath;
             window.document.title = 'pmpm - '+fpath;
             history.pushState({fpath:fpath}, fpath, url);
         } else {
@@ -416,7 +678,7 @@ window.onpopstate = function (event) {
 
     fpath = newFpath;
     window.document.title = 'pmpm - '+fpath;
-    getWebsocket().then((websocket) => websocket.send(fpath));
+    getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
 };
 
 // Load websocket
@@ -425,7 +687,7 @@ initWebsocket();
 // Load initial document if any
 if(fpath && fpath !== 'LIVE') {
     window.document.title = 'pmpm - '+fpath;
-    getWebsocket().then((websocket) => websocket.send(fpath));
+    getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
 } else {
     // When refreshing the page, it may be irritatingly empty --> show this
     getWebsocket().then((_) => showStatusInfo('Just connected to '+websocketUrl+'. Pipe something to pmpm ;-)'));

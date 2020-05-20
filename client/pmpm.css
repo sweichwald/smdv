@@ -431,4 +431,22 @@ div#status {
     bottom: 0;
     margin: 0;
     width: 100%;
+    z-index: 10;
+}
+
+/* Loading citations */
+.loading {
+    color: #898887;
+}
+
+.highlight {
+    background-color: #fdf6e3;
+}
+.fade {
+    transition: background-color .400s linear;
+}
+
+/* Not found citations */
+.citeproc-not-found {
+    color: #ad0625;
 }
