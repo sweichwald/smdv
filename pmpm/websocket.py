@@ -101,13 +101,13 @@ def run_websocket_server():
 
 
 async def monitorpipe():
-    await EVENT_LOOP.connect_read_pipe(
+    EVENT_LOOP.create_task(EVENT_LOOP.connect_read_pipe(
         ReadPipeProtocol,
         os.fdopen(
             os.open(
                 NAMED_PIPE,
                 os.O_NONBLOCK | os.O_RDONLY),
-            'rb'))
+            'rb')))
     await PIPE_LOST.wait()
     PIPE_LOST.clear()
     EVENT_LOOP.create_task(monitorpipe())
@@ -214,7 +214,7 @@ async def serve_client(client: websockets.WebSocketServerProtocol, path: str):
     await register_client(client)
     try:
         async for message in client:
-            await handle_message(client, message)
+            EVENT_LOOP.create_task(handle_message(client, message))
     finally:
         EVENT_LOOP.create_task(unregister_client(client))
 
@@ -409,7 +409,7 @@ async def md2htmlblocks(content, cwd):
         content = content[18:]
         outtype = "revealjs"
 
-    jsonout = await md2json(content, cwd)
+    jsonout = await EVENT_LOOP.create_task(md2json(content, cwd))
 
     global BIBQUEUE
     BIBQUEUE = *(await uniqueciteprocdict(jsonout, cwd)), cwd
