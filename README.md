@@ -5,7 +5,7 @@
 _Forked from [flaport/smdv][forkedfrom] on 2020-05-01;
 original copyright and license notices are preserved in [LICENSE](LICENSE)
 and the same [GNU General Public License v3.0][gpl3] applies to this repository;
-[all changes][changes] are documented._
+[all changes][changes] are documented; 3rd party LICENSES are included in the respective subfolders._
 
 
 
