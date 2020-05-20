@@ -284,7 +284,7 @@ async def citeproc():
     if not BIBPROCESSING and BIBQUEUE:
         try:
             q, BIBQUEUE, BIBPROCESSING = BIBQUEUE, None, True
-            citehtml = await citeproc_sub(*q)
+            citehtml = await EVENT_LOOP.create_task(citeproc_sub(*q))
             EVENT_LOOP.create_task(
                 send_message_to_all_js_clients({'html': citehtml,
                                                 'bibid': q[1]}))
