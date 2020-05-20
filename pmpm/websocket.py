@@ -413,8 +413,9 @@ async def md2htmlblocks(content, cwd):
                     "pandoc-api-version": jsonout['pandoc-api-version']})
         for j in jsonout['blocks'])
 
-    htmlblocks = [await json2htmlblock(j, cwd, outtype)
-                  for j in jsonlist]
+    htmlblocks = await asyncio.gather(*(
+        json2htmlblock(j, cwd, outtype)
+        for j in jsonlist))
 
     try:
         supbib = jsonout['meta']['suppress-bibliography']['c'] is True
