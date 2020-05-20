@@ -332,10 +332,18 @@ function replaceRefList(refList)
 function showHideRefList()
 {
     if(_refsElement !== undefined) {
-        _refsElement.style.display = suppressBibliography ? 'none' : 'block';
-        references.style.display = suppressBibliography || _refsElement.parentNode !== references  ? 'none' : 'block';
-    } else
+        // If a references list exists, show/hide it
+        const hide = suppressBibliography || contentBibid === null;
+        _refsElement.style.display = hide ? 'none' : 'block';
+        // Separately hide the references section at the bottom.
+        // Hide this also if the references list is in a custom <div id="refs"></div>
+        // Otherwise, a possible references title will still be shown
+        references.style.display = hide || _refsElement.parentNode !== references  ? 'none' : 'block';
+    } else {
+        // If no references list exists, hide the references section at the bottom
+        // This is to also hide a possible references title
         references.style.display = 'none';
+    }
 }
 
 function updateRefsFromCiteprocResult()
