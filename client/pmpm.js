@@ -20,8 +20,10 @@ function loadStyle(src, integrity, crossOrigin)
     const style = document.createElement('link');
     style.rel = 'stylesheet';
     style.type = 'text/css';
-    style.integrity = integrity;
-    style.crossOrigin = crossOrigin;
+    if(integrity !== undefined)
+        style.integrity = integrity;
+    if(crossOrigin !== undefined)
+        style.crossOrigin = crossOrigin;
     style.href = src;
     const promise = new Promise((resolve, reject) => {
         style.onload = resolve;
@@ -38,8 +40,8 @@ async function getViz() {
     if(!_vizLoaded) {
         if(_vizLoadPromise === undefined) {
             _vizLoadPromise = Promise.all([
-                loadScript('https://cdn.tutorialjinni.com/viz.js/2.1.2/viz.js'),
-                loadScript('https://cdn.tutorialjinni.com/viz.js/2.1.2/lite.render.js')
+                loadScript('./3rdparty/viz.js/2.1.2/viz.js'),
+                loadScript('./3rdparty/viz.js/2.1.2/lite.render.js')
             ]);
         }
         await _vizLoadPromise;
@@ -55,8 +57,8 @@ async function getKatex() {
     if(_katex === undefined) {
         if(_katexLoadPromise === undefined) {
             _katexLoadPromise = Promise.all([
-                loadScript('https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/katex.min.js', 'sha384-y23I5Q6l+B6vatafAwxRu/0oK/79VlbSz7Q9aiSZUvyWYIYsd+qj+o24G5ZU2zJz', 'anonymous'),
-                loadStyle('https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/katex.min.css', 'sha384-zB1R0rpPzHqg7Kpt0Aljp8JPLqbXI3bhnPWROx27a9N0Ll6ZP/+DiW/UqRcLbRjq', 'anonymous')
+                loadScript('./3rdparty/katex/0.11.1/katex.min.js'),
+                loadStyle('./3rdparty/katex/0.11.1/katex.min.css')
             ]);
         }
         await _katexLoadPromise;
