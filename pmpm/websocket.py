@@ -147,7 +147,7 @@ class ReadPipeProtocol(asyncio.Protocol):
 
 async def progressbar():
     for k in count(1):
-        await asyncio.sleep(.382)
+        await asyncio.sleep(.300)
         EVENT_LOOP.create_task(
             send_message_to_all_js_clients(
                 {"status": ' 🞄 '*k}))
@@ -171,7 +171,7 @@ async def processqueue():
             EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
         finally:
             PROCESSING.cancel()
-            await asyncio.sleep(.382)
+            await asyncio.sleep(.300)
             PROCESSING = False
             EVENT_LOOP.create_task(processqueue())
 

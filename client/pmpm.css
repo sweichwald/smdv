@@ -443,7 +443,7 @@ div#status {
     background-color: #fdf6e3;
 }
 .fade {
-    transition: background-color .373s linear;
+    transition: background-color .400s linear;
 }
 
 /* Not found citations */
