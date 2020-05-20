@@ -147,7 +147,7 @@ class ReadPipeProtocol(asyncio.Protocol):
 
 async def progressbar():
     for k in count(1):
-        await asyncio.sleep(.382)
+        await asyncio.sleep(.300)
         EVENT_LOOP.create_task(
             send_message_to_all_js_clients(
                 {"status": ' 🞄 '*k}))
@@ -171,7 +171,7 @@ async def processqueue():
             EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
         finally:
             PROCESSING.cancel()
-            await asyncio.sleep(.382)
+            await asyncio.sleep(.300)
             PROCESSING = False
             EVENT_LOOP.create_task(processqueue())
 
@@ -296,7 +296,7 @@ async def citeproc():
             if q[0] and q[1]:
                 citehtml = await EVENT_LOOP.create_task(citeproc_sub(*q))
             else:
-                citehtml = None
+                citehtml = ''
             EVENT_LOOP.create_task(
                 send_message_to_all_js_clients({'html': citehtml,
                                                 'bibid': q[1]}))
@@ -320,7 +320,7 @@ async def citeproc_sub(jsondump, bibid, cwd):
             stderr=asyncio.subprocess.DEVNULL)
         stdout, stderr = await proc.communicate(jsondump.encode())
         return stdout.decode()
-    return None
+    return ''
 
 
 async def uniqueciteprocdict(jsondict, cwd):
