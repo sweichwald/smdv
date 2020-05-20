@@ -281,7 +281,7 @@ async def send_message_to_all_js_clients(message):
 async def citeproc():
     global BIBPROCESSING
     global BIBQUEUE
-    if not BIBPROCESSING and BIBQUEUE:
+    if not BIBPROCESSING and BIBQUEUE and BIBQUEUE[0] and BIBQUEUE[1]:
         try:
             q, BIBQUEUE, BIBPROCESSING = BIBQUEUE, None, True
             citehtml = await EVENT_LOOP.create_task(citeproc_sub(*q))
@@ -414,7 +414,8 @@ async def md2htmlblocks(content, cwd):
     global BIBQUEUE
     BIBQUEUE = *(await uniqueciteprocdict(jsonout, cwd)), cwd
     bibid = BIBQUEUE[1]
-    EVENT_LOOP.create_task(citeproc())
+    if BIBQUEUE[0] and BIBQUEUE[1]:
+        EVENT_LOOP.create_task(citeproc())
 
     jsonlist = (
         json.dumps({"blocks": [j],
