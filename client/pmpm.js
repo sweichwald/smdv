@@ -86,27 +86,35 @@ let fpath = (new URLSearchParams(window.location.search)).get('filepath');
 // body
 async function renderBlockContentsAsync(el)
 {
+    const promises = [];
+
     // Render katex
     for(const mathEl of el.getElementsByClassName('math')) {
         const latexStr = mathEl.textContent;
-        try {
-            const katex = await getKatex();
-            katex.render(latexStr, mathEl, {
-                displayMode: mathEl.classList.contains('display')
-            });
-        } catch(e) {
-            const errEl = document.createElement('span');
-            errEl.style.color = 'red';
-            errEl.textContent = latexStr + ' ('+e.message+')';
-            mathEl.appendChild(errEl);
-        }
+        promises.push(getKatex().then(katex => {
+            try {
+                katex.render(latexStr, mathEl, {
+                    displayMode: mathEl.classList.contains('display')
+                });
+            } catch(e) {
+                const errEl = document.createElement('span');
+                errEl.style.color = 'red';
+                errEl.textContent = latexStr + ' ('+e.message+')';
+                mathEl.appendChild(errEl);
+            }
+        }));
     }
 
     // Render viz
     for(const vizEl of el.getElementsByClassName('dot-parse')) {
-        const viz = await getViz();
-        viz.renderString(el.textContent, {engine: 'dot', format:'svg'}).then(svg => el.innerHTML = svg);
+        promises.push(getViz().then(viz => {
+            return viz.renderString(el.textContent, {engine: 'dot', format:'svg'});
+        }).then(svg => {
+            el.innerHTML = svg;
+        }));
     }
+
+    return Promise.all(promises);
 }
 
 function swapElements(parent, obj1, obj2) {
@@ -170,16 +178,26 @@ function highlight(el)
 
 function scrollToFirstChange(scrollTarget, scrollTargetCompare)
 {
+    // Find first actually changed element in the first changed block
+    // Important for large blocks
+    let rect;
     if(scrollTargetCompare && scrollTarget.childNodes.length) {
-        // TODO: Delay until async katex / viz rendering is done?
         scrollTarget = findFirstChangedChild(scrollTarget.childNodes, scrollTargetCompare.childNodes);
-        if(scrollTarget.nodeType != Node.ELEMENT_NODE)
+        // We can't scroll to text elements
+        while(scrollTarget.nodeType != Node.ELEMENT_NODE)
             scrollTarget = scrollTarget.parentNode;
+        // We can't scroll to hidden elements, or some <math> child nodes (at least in Chrome)
+        rect = scrollTarget.getBoundingClientRect();
+        while(!rect.height) {
+            scrollTarget = scrollTarget.parentNode;
+            rect = scrollTarget.getBoundingClientRect();
+        }
+    } else {
+        rect = scrollTarget.getBoundingClientRect();
     }
 
     const windowheight20 = window.innerHeight / 5;
-    const newpos = scrollTarget.getBoundingClientRect().top +
-                      window.pageYOffset - windowheight20;
+    const newpos = rect.top + window.pageYOffset - windowheight20;
 
     // highlight
     // only highlight if scrolling more than 80% / 40% down / up
@@ -431,6 +449,7 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     let firstChangeCompare;
     let mustRenumber = false;
     let renumberNum;
+    const renderPromises = [];
     for(i = 0; i < contentnew.length; i++) {
 
         const newhash = contentnew[i][0];
@@ -478,7 +497,7 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
             extractReferences(newEl);
 
             // asynchronously render latex and viz if necessary
-            renderBlockContentsAsync(newEl);
+            renderPromises.push(renderBlockContentsAsync(newEl));
 
             if (firstChange === undefined) {
                 firstChange = children[i];
@@ -548,8 +567,12 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     showHideRefList();
 
     if(firstChange !== undefined) {
-        // scroll first changed block into view
-        scrollToFirstChange(firstChange, firstChangeCompare);
+        // scroll (first changed child of) first changed block into view
+        // But only after rendering is finished. Otherwise the first change detection
+        // may find a still-rendering but unchanged element.
+        Promise.all(renderPromises).finally(() => {
+            scrollToFirstChange(firstChange, firstChangeCompare);
+        });
     }
 
     // Set references title
