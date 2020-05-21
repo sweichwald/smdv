@@ -389,11 +389,14 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 def json2htmlblock_sub(jsontxt, cwd, outtype):
+    call = ["pandoc",
+            "--from", "json",
+            "--to", outtype,
+            "--"+ARGS.math]
+    if outtype in ["revealjs", "slidy"]:
+        call += ["--slide-level", "1"]
     proc = subprocess.Popen(
-        ["pandoc",
-         "--from", "json",
-         "--to", outtype,
-         "--"+ARGS.math],
+        call,
         cwd=cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -403,6 +406,22 @@ def json2htmlblock_sub(jsontxt, cwd, outtype):
         f'\\1="file://{cwd}/\\2" onclick="return localLinkClickEvent(this);"',
         stdout.decode())
     return [hash(html), html]
+
+
+def groupsections(blocks):
+    section = []
+    for b in blocks:
+        if b == {"t": "HorizontalRule"}:
+            if section:
+                yield section
+            section = []
+        elif b["t"] == "Header" and b["c"][0] == 1:
+            if section:
+                yield section
+            section = [b]
+        else:
+            section += [b]
+    yield section
 
 
 # do not cache --> checkforbibdifferences
@@ -420,6 +439,9 @@ async def md2htmlblocks(content, cwd):
     if content.startswith("<!-- revealjs -->\n"):
         content = content[18:]
         outtype = "revealjs"
+    elif content.startswith("<!-- slidy -->\n"):
+        content = content[15:]
+        outtype = "slidy"
 
     jsonout = await EVENT_LOOP.create_task(md2json(content, cwd))
 
@@ -428,11 +450,18 @@ async def md2htmlblocks(content, cwd):
     bibid = BIBQUEUE[1]
     EVENT_LOOP.create_task(citeproc())
 
-    jsonlist = (
-        json.dumps({"blocks": [j],
-                    "meta": {},
-                    "pandoc-api-version": jsonout['pandoc-api-version']})
-        for j in jsonout['blocks'])
+    if outtype in ["revealjs", "slidy"]:
+        jsonlist = (
+            json.dumps({"blocks": j,
+                        "meta": {},
+                        "pandoc-api-version": jsonout['pandoc-api-version']})
+            for j in groupsections(jsonout['blocks']))
+    else:
+        jsonlist = (
+            json.dumps({"blocks": [j],
+                        "meta": {},
+                        "pandoc-api-version": jsonout['pandoc-api-version']})
+            for j in jsonout['blocks'])
 
     htmlblocks = await asyncio.gather(*(
         json2htmlblock(j, cwd, outtype)
