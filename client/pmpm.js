@@ -77,6 +77,7 @@ const footnotes = document.getElementById('footnotes');
 const footnotesChildren = footnotes.children;
 const references = document.getElementById('references');
 const referencesTitle = document.getElementById('bibliography');
+var wrappingTagName = wrappingTagName === undefined ? "div" : wrappingTagName;
 let contentBibid;
 let citeprocBibid;
 let suppressBibliography = false;
@@ -480,7 +481,7 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
             }
         } else {
             // Hash does not exist, creating new
-            const newEl = document.createElement('div');
+            const newEl = document.createElement(wrappingTagName);
             newEl.setAttribute(hashAttr, newhash);
             newEl.innerHTML = contentnew[i][1];
             container.insertBefore(newEl, children[i]);
@@ -571,6 +572,7 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
         // But only after rendering is finished. Otherwise the first change detection
         // may find a still-rendering but unchanged element.
         Promise.all(renderPromises).finally(() => {
+            // TODO: for slides go to anchor id of closest sibling to the left or ancestor
             scrollToFirstChange(firstChange, firstChangeCompare);
         });
     }

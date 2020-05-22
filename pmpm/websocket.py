@@ -380,21 +380,18 @@ async def md2json(content, cwd):
 
 
 @alru_cache(maxsize=LRU_CACHE_SIZE)
-async def json2htmlblock(jsontxt, cwd, outtype):
+async def json2htmlblock(jsontxt, cwd, options):
     return await EVENT_LOOP.run_in_executor(
-        None, json2htmlblock_sub, jsontxt, cwd, outtype)
+        None, json2htmlblock_sub, jsontxt, cwd, options)
 
 
 urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
-def json2htmlblock_sub(jsontxt, cwd, outtype):
-    call = ["pandoc",
+def json2htmlblock_sub(jsontxt, cwd, options):
+    call = ("pandoc",
             "--from", "json",
-            "--to", outtype,
-            "--"+ARGS.math]
-    if outtype in ["revealjs", "slidy"]:
-        call += ["--slide-level", "1"]
+            "--"+ARGS.math) + options
     proc = subprocess.Popen(
         call,
         cwd=cwd,
@@ -405,13 +402,15 @@ def json2htmlblock_sub(jsontxt, cwd, outtype):
     html = urlRegex.sub(
         f'\\1="file://{cwd}/\\2" onclick="return localLinkClickEvent(this);"',
         stdout.decode())
+    if "revealjs" in options and html.startswith("<section>\n"):
+        html = html[10:-11]
     return [hash(html), html]
 
 
-def groupsections(blocks):
+def groupsections(blocks, slidelevel):
     section = []
     for b in blocks:
-        if b == {"t": "HorizontalRule"}:
+        if slidelevel == 1 and b == {"t": "HorizontalRule"}:
             if section:
                 yield section
             section = []
@@ -421,7 +420,8 @@ def groupsections(blocks):
             section = [b]
         else:
             section += [b]
-    yield section
+    if section:
+        yield section
 
 
 # do not cache --> checkforbibdifferences
@@ -435,36 +435,40 @@ async def md2htmlblocks(content, cwd):
         html: str: the resulting html
 
     """
-    outtype = "html5"
-    if content.startswith("<!-- revealjs -->\n"):
-        content = content[18:]
-        outtype = "revealjs"
-    elif content.startswith("<!-- slidy -->\n"):
-        content = content[15:]
-        outtype = "slidy"
+    options = ("--to", "html5")
+    # slides detected if file starts with
+    # <!-- revealjs --> or <!-- revealjs:S -->
+    # where S sets the slidelevel
+    if content.startswith("<!-- revealjs"):
+        if content[13:].startswith(":") and content[15:].startswith(" -->\n"):
+            slidelevel = content[14]
+            content = content[20:]
+        else:
+            slidelevel = "2"
+            content = content[18:]
+        options = ("--to", "revealjs") + ("--slide-level", slidelevel)
 
     jsonout = await EVENT_LOOP.create_task(md2json(content, cwd))
+
+    # blocks are grouped into slidesections
+    if "revealjs" in options:
+        blocks = groupsections(jsonout['blocks'], int(slidelevel))
+    else:
+        blocks = ([j] for j in jsonout['blocks'])
 
     global BIBQUEUE
     BIBQUEUE = *(await uniqueciteprocdict(jsonout, cwd)), cwd
     bibid = BIBQUEUE[1]
     EVENT_LOOP.create_task(citeproc())
 
-    if outtype in ["revealjs", "slidy"]:
-        jsonlist = (
-            json.dumps({"blocks": j,
-                        "meta": {},
-                        "pandoc-api-version": jsonout['pandoc-api-version']})
-            for j in groupsections(jsonout['blocks']))
-    else:
-        jsonlist = (
-            json.dumps({"blocks": [j],
-                        "meta": {},
-                        "pandoc-api-version": jsonout['pandoc-api-version']})
-            for j in jsonout['blocks'])
+    jsonlist = (
+        json.dumps({"blocks": j,
+                    "meta": {},
+                    "pandoc-api-version": jsonout['pandoc-api-version']})
+        for j in blocks)
 
     htmlblocks = await asyncio.gather(*(
-        json2htmlblock(j, cwd, outtype)
+        json2htmlblock(j, cwd, options)
         for j in jsonlist))
 
     try:

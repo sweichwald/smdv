@@ -23,11 +23,10 @@
 
 
 
-<!--
 <div id="status"></div>
 
-<div class="markdown-body">
-    <div id="content"></div>
+<div class="reveal markdown-body">
+    <div class="slides" id="content"></div>
     <div id="references">
         <h1 class="unnumbered" id="bibliography"></h1>
     </div>
@@ -36,25 +35,14 @@
         <div id="footnotes"></div>
     </div>
 </div>
--->
 
 
 
 <!-- pmpm.js script -->
-<!-- <script src="./pmpm.js"></script> -->
-
-
-
-<!-- example slides -->
-<div class="reveal">
-<div class="slides">
-<section>Single Horizontal Slide</section>
-<section>
-    <section>Vertical Slide 1</section>
-    <section>Vertical Slide 2</section>
-</section>
-</div>
-</div>
+<script type="text/javascript">
+var wrappingTagName = "section";
+</script>
+<script src="./pmpm.js"></script>
 
 
 
@@ -67,6 +55,19 @@
     // Push each slide change to the browser history
     history: true,
     });
+
+
+
+var origUpdateBodyFromBlocks = updateBodyFromBlocks;
+updateBodyFromBlocks = function(contentnew, referenceSectionTitle) {
+     origUpdateBodyFromBlocks(contentnew, referenceSectionTitle);
+    // Full list of configuration options available at:
+    // https://github.com/hakimel/reveal.js#configuration
+    Reveal.initialize({
+    // Push each slide change to the browser history
+    history: true,
+    });
+}
 </script>
 
 
