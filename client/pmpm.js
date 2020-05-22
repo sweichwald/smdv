@@ -572,8 +572,19 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
         // But only after rendering is finished. Otherwise the first change detection
         // may find a still-rendering but unchanged element.
         Promise.all(renderPromises).finally(() => {
-            // TODO: for slides go to anchor id of closest sibling to the left or ancestor
-            scrollToFirstChange(firstChange, firstChangeCompare);
+            // TODO: decide between
+            // a) jumping to changed slide/content (try for slide-level 1 and 2; take care of indexf)
+            // b) stay on current slide/in current state -- allows users to advance to slides/states
+            // e.g. already revealing all list items of an incremental list while changing the items
+            if (wrappingTagName === 'section') {
+                Reveal.sync();
+                let state = Reveal.getState();
+                if (state.indexh !== undefined)
+                    Reveal.setState(state);
+                else
+                    Reveal.slide(0);
+            } else
+                scrollToFirstChange(firstChange, firstChangeCompare);
         });
     }
 
