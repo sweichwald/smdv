@@ -419,6 +419,12 @@ pre {
     padding-left: 5px;
     padding-right: 5px;
 }
+section.level1, section#title-slide {
+    border: 2px dashed #e3e3e3;
+}
+section.level2 {
+    border: 1px dotted #e3e3e3;
+}
 
 
 

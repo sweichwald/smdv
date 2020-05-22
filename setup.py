@@ -38,12 +38,6 @@ if __name__ == "__main__":
             "Operating System :: POSIX :: Linux",
             "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         ],
-        packages=['pmpm'],
+        packages=['pmpm', 'client'],
         include_package_data=True,
-        data_files=[
-            "client/pmpm.js",
-            "client/pmpm.html",
-            "client/pmpm.css",
-            "client/pmpm_revealjs.html",
-        ]
     )

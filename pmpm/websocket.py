@@ -407,6 +407,31 @@ def json2htmlblock_sub(jsontxt, cwd, options):
     return [hash(html), html]
 
 
+@alru_cache(maxsize=LRU_CACHE_SIZE)
+async def json2titleblock(jsontxt, options):
+    call = ("pandoc",
+            "--from", "json",
+            "--standalone",
+            "--"+ARGS.math) + options
+    proc = await asyncio.subprocess.create_subprocess_exec(
+        *call,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL)
+    stdout, stderr = await proc.communicate(jsontxt.encode())
+    out = stdout.decode()
+    if "revealjs" in options:
+        start = out.find('<section id="title-slide">')
+        end = out[start:].find('</section>') + start + 10
+    else:
+        start = out.find('<header id="title-block-header">')
+        end = out[start:].find('</header>') + start + 9
+    html = out[start:end]
+    if html:
+        return [[hash(html), html]]
+    return []
+
+
 def groupsections(blocks, slidelevel):
     section = []
     for b in blocks:
@@ -461,6 +486,18 @@ async def md2htmlblocks(content, cwd):
     bibid = BIBQUEUE[1]
     EVENT_LOOP.create_task(citeproc())
 
+    # []
+    titleblock = await json2titleblock(
+        json.dumps({
+            "blocks": [],
+            "meta": {k: jsonout['meta'][k]
+                     for k in {"title",
+                               "subtitle",
+                               "author",
+                               "date"} & jsonout['meta'].keys()},
+            "pandoc-api-version": jsonout['pandoc-api-version']}),
+        options)
+
     jsonlist = (
         json.dumps({"blocks": j,
                     "meta": {},
@@ -481,7 +518,7 @@ async def md2htmlblocks(content, cwd):
     except (IndexError, KeyError):
         refsectit = ''
 
-    return (htmlblocks,
+    return (titleblock + htmlblocks,
             supbib,
             refsectit,
             bibid)
