@@ -19,22 +19,19 @@
 <div id="status"></div>
 
 <div class="reveal markdown-body">
-    <div class="slides" id="content"></div>
+    <div class="slides" id="content"><section><i>Pipe something to pmpm</i></section></div><!-- Fake section so that Reveal.initialize() works -->
     <div id="references">
         <h1 class="unnumbered" id="bibliography"></h1>
     </div>
     <div class="footnotes" style="display: none;">
         <hr>
-        <div id="footnotes"></div>
+        <div id="footnotes"><ol></ol></div><!-- Fake ol, corresponding to the fake <section> above -->
     </div>
 </div>
 
 
 
 <!-- pmpm.js script -->
-<script type="text/javascript">
-var wrappingTagName = "section";
-</script>
 <script src="./pmpm.js"></script>
 
 
@@ -42,15 +39,68 @@ var wrappingTagName = "section";
 <script src="./3rdparty/reveal.js/4.0.0/dist/reveal.js"></script>
 
 <script>
+
+findFirstChangedChild = (currentChildNodes, previousChildNodes) => {
+    const nchildren = currentChildNodes.length;
+    for(let i = 0; i < nchildren; i++) {
+        const curChild = currentChildNodes[i];
+        const prevChild = previousChildNodes[i];
+        if(!prevChild)
+            return curChild;
+        if(!curChild.isEqualNode(prevChild)) {
+            if(curChild.childNodes.length) {
+                const tmp = findFirstChangedChild(curChild.childNodes, prevChild.childNodes);
+                // Reveal.js changes attributes of <section>s. Don't take this as firstChangedChild
+                if(curChild.tagName === 'SECTION' && tmp === undefined) {
+                    console.log('no change in children of <section> found -- continuing as if equal');
+                } else {
+                    return tmp;
+                }
+            } else {
+                return curChild;
+            }
+        }
+    }
+    // Nothing found, difference is probably in attributes of parent
+    return;
+};
+
+
+scrollToFirstChange = (firstChange, firstChangeCompare) => {
+
+    // sync
+    Reveal.sync();
+
+    // Find first changed slide/subslide
+    let slide;
+    if(firstChangeCompare && firstChange.childNodes.length) {
+        slide = findFirstChangedChild(firstChange.childNodes, firstChangeCompare.childNodes);
+        while(slide && slide.tagName != 'SECTION')
+            slide = slide.parentNode;
+    }
+
+    // Scroll to first changed slide/subslide
+    if(slide !== undefined) {
+        const newIndices = Reveal.getIndices(slide);
+        console.log('slide indices', newIndices);
+        // TODO: What about fragments?
+        Reveal.slide(newIndices.h, newIndices.v, newIndices.f);
+    } else
+        Reveal.slide(0);
+};
+
+
 // Full list of configuration options available at:
 // https://github.com/hakimel/reveal.js#configuration
 Reveal.initialize({
-// Push each slide change to the browser history
-history: true,
-controlsTutorial: false,
-controlsLayout: "edges",
-slideNumber: true,
-transitionSpeed: "fast",
+    // Push each slide change to the browser history
+    history: true,
+    controlsTutorial: false,
+    controlsLayout: "edges",
+    slideNumber: true,
+    transitionSpeed: "fast",
+}).then(() => {
+    init('section');
 });
 </script>
 

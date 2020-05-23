@@ -77,7 +77,7 @@ const footnotes = document.getElementById('footnotes');
 const footnotesChildren = footnotes.children;
 const references = document.getElementById('references');
 const referencesTitle = document.getElementById('bibliography');
-var wrappingTagName = wrappingTagName === undefined ? "div" : wrappingTagName;
+let wrappingTagName = 'div';
 let contentBibid;
 let citeprocBibid;
 let suppressBibliography = false;
@@ -572,19 +572,7 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
         // But only after rendering is finished. Otherwise the first change detection
         // may find a still-rendering but unchanged element.
         Promise.all(renderPromises).finally(() => {
-            // TODO: decide between
-            // a) jumping to changed slide/content (try for slide-level 1 and 2; take care of indexf)
-            // b) stay on current slide/in current state -- allows users to advance to slides/states
-            // e.g. already revealing all list items of an incremental list while changing the items
-            if (wrappingTagName === 'section') {
-                Reveal.sync();
-                let state = Reveal.getState();
-                if (state.indexh !== undefined)
-                    Reveal.setState(state);
-                else
-                    Reveal.slide(0);
-            } else
-                scrollToFirstChange(firstChange, firstChangeCompare);
+            scrollToFirstChange(firstChange, firstChangeCompare);
         });
     }
 
@@ -717,15 +705,23 @@ window.onpopstate = function (event) {
     getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
 };
 
-// Load websocket
-initWebsocket();
+function init(customWrappingTagName)
+{
+    // Custom wrapping tag name, for slides
+    if(customWrappingTagName !== undefined)
+        wrappingTagName = customWrappingTagName;
+   
+    // Load websocket
+    initWebsocket();
 
-// Load initial document if any
-if(fpath && fpath !== 'LIVE') {
-    window.document.title = 'pmpm - '+fpath;
-    getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
-} else {
-    // When refreshing the page, it may be irritatingly empty --> show this
-    getWebsocket().then((_) => showStatusInfo('Just connected to '+websocketUrl+'. Pipe something to pmpm ;-)'));
+    // Load initial document if any
+    if(fpath && fpath !== 'LIVE') {
+        window.document.title = 'pmpm - '+fpath;
+        getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
+    } else {
+        // When refreshing the page, it may be irritatingly empty --> show this
+        getWebsocket().then((_) => showStatusInfo('Just connected to '+websocketUrl+'. Pipe something to pmpm ;-)'));
+    }
 }
+
 
