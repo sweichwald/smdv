@@ -50,9 +50,9 @@ findFirstChangedChild = (currentChildNodes, previousChildNodes) => {
         if(!curChild.isEqualNode(prevChild)) {
             if(curChild.childNodes.length) {
                 const tmp = findFirstChangedChild(curChild.childNodes, prevChild.childNodes);
-                // Reveal.js changes attributes of <section>s. Don't take this as firstChangedChild
-                if(curChild.tagName === 'SECTION' && tmp === undefined) {
-                    console.log('no change in children of <section> found -- continuing as if equal');
+                // Reveal.js changes attributes of <section>s or classes of fragments. Don't take this as firstChangedChild
+                if(tmp === undefined && (curChild.tagName === 'SECTION' || curChild.classList.contains('fragment'))) {
+                    console.log('no change in children of <section> / fragment found -- continuing as if equal');
                 } else {
                     return tmp;
                 }
@@ -61,14 +61,20 @@ findFirstChangedChild = (currentChildNodes, previousChildNodes) => {
             }
         }
     }
-    // Nothing found, difference is probably in attributes of parent
-    return;
+
+    if(previousChildNodes.length > nchildren) {
+        // Previously we had more children, return last current child
+        return currentChildNodes[nchildren-1];
+    } else {
+        // Nothing found, difference is probably in attributes of parent
+        return;
+    }
 };
 
 
 scrollToFirstChange = (firstChange, firstChangeCompare) => {
 
-    // sync
+    // Sync
     Reveal.sync();
 
     // Find first changed slide/subslide
@@ -79,21 +85,18 @@ scrollToFirstChange = (firstChange, firstChangeCompare) => {
             slide = slide.parentNode;
     }
 
-    // avoid flickering
+    // Temporarily disable transitions to avoid flickering
     // TODO: Temporarily disable fragment transitions?
-    var oldConfig = Object.assign({}, Reveal.getConfig());
-    Reveal.configure({transition: "none",
-                      backgroundTransition: "none"})
+    const oldConfig = {...Reveal.getConfig()};
+    Reveal.configure({transition: 'none', backgroundTransition: 'none'});
+
     // Scroll to first changed slide/subslide
-    if(slide !== undefined) {
-        const newIndices = Reveal.getIndices(slide);
-        console.log('slide indices', newIndices);
-        // TODO: What about fragments?
-        //       Show all fragments on changed slide? (+Infinity instead of newIndices.f)
-        Reveal.slide(newIndices.h, newIndices.v, +Infinity);
-    } else  // TODO: When slide is removed, jump to neighbouring slide instead of slide(0)
-        Reveal.slide(0);
-    // revert configuration
+    // TODO: What about fragments?
+    //       Show all fragments on changed slide? (+Infinity instead of newIndices.f)
+    const newIndices = Reveal.getIndices(slide !== undefined ? slide : firstChange);
+    Reveal.slide(newIndices.h, newIndices.v, +Infinity);
+
+    // Re-enable transitions
     Reveal.configure(oldConfig);
 };
 
