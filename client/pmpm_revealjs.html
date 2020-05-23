@@ -79,24 +79,32 @@ scrollToFirstChange = (firstChange, firstChangeCompare) => {
             slide = slide.parentNode;
     }
 
+    // avoid flickering
+    // TODO: Temporarily disable fragment transitions?
+    var oldConfig = Object.assign({}, Reveal.getConfig());
+    Reveal.configure({transition: "none",
+                      backgroundTransition: "none"})
     // Scroll to first changed slide/subslide
     if(slide !== undefined) {
         const newIndices = Reveal.getIndices(slide);
         console.log('slide indices', newIndices);
         // TODO: What about fragments?
-        Reveal.slide(newIndices.h, newIndices.v, newIndices.f);
-    } else
+        //       Show all fragments on changed slide? (+Infinity instead of newIndices.f)
+        Reveal.slide(newIndices.h, newIndices.v, +Infinity);
+    } else  // TODO: When slide is removed, jump to neighbouring slide instead of slide(0)
         Reveal.slide(0);
+    // revert configuration
+    Reveal.configure(oldConfig);
 };
 
 
 // Full list of configuration options available at:
 // https://github.com/hakimel/reveal.js#configuration
 Reveal.initialize({
-    // Push each slide change to the browser history
-    history: true,
     controlsTutorial: false,
     controlsLayout: "edges",
+    history: true,
+    pdfSeparateFragments: false,
     slideNumber: true,
     transitionSpeed: "fast",
 }).then(() => {
