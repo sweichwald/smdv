@@ -25,7 +25,7 @@ __pmpm features the following__ (_and differs from [smdv][smdv] in various ways_
 * for __ease of use and increased interoperability__,
   pmpm simply __accepts new markdown content under a named pipe__
   and quickly renders and distributes it for preview:\
-  A simple `cat somefile.md > $XDG_RUNTIME_DIR/pmpm_pipe` and the preview is ready!\
+  A simple `cat somefile.md > $XDG_RUNTIME_DIR/pmpm_pipe && echo -n "\0" > $XDG_RUNTIME_DIR/pmpm_pipe` and the preview is ready!\
   (_avoiding the slower detour:
   PUT to flask -> via websocket to renderer -> via websocket to browser_)
 * pmpm implements an __auto-scroll-to-first-change__ feature for a better live preview experience
@@ -73,7 +73,7 @@ If installed within a virtual environment, ensure that pmpm is appropriately lin
 * start the server `pmpm --start`\
   (use firefox with mathml support or add the option `--math katex`)
 * open the `pmpm.html` file in your browser
-* pipe some markdown to pmpm `cat file.md > $XDG_RUNTIME_DIR/pmpm_pipe`\
+* pipe some markdown to pmpm `cat file.md > $XDG_RUNTIME_DIR/pmpm_pipe && echo -n "\0" > $XDG_RUNTIME_DIR/pmpm_pipe`\
   (possibly passing along the filepath via a first line html comment of the form `<!-- filepath:/dir/to/file.md -->` to enable relative image paths etc.)
 * your browser should show the rendered markdown
 
