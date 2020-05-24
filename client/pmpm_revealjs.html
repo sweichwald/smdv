@@ -86,7 +86,10 @@ scrollToFirstChange = (firstChange, firstChangeCompare) => {
     }
 
     // Temporarily disable transitions to avoid flickering
-    // TODO: Temporarily disable fragment transitions?
+    // TODO: Improve the temporary disabling of fragment transitions?
+    let x = document.getElementsByClassName("fragment");
+    for (i = 0; i < x.length; i++)
+        x[i].style.transition = "none";
     const oldConfig = {...Reveal.getConfig()};
     Reveal.configure({transition: 'none', backgroundTransition: 'none'});
 
@@ -98,6 +101,8 @@ scrollToFirstChange = (firstChange, firstChangeCompare) => {
 
     // Re-enable transitions
     Reveal.configure(oldConfig);
+    for (i = 0; i < x.length; i++)
+        x[i].style.removeProperty("transition");
 };
 
 
