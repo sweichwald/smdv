@@ -81,8 +81,11 @@ let wrappingTagName = 'div';
 let contentBibid;
 let citeprocBibid;
 let suppressBibliography = false;
-let fpath = (new URLSearchParams(window.location.search)).get('filepath');
-const port = (new URLSearchParams(window.location.search)).get('port') ?? '9877';
+let fpath, port;
+({fpath, port} = (() => {
+    const tmp = new URLSearchParams(window.location.search);
+    return {fpath: tmp.get('filepath'), port: tmp.get('port') ?? '9877'}
+})());
 
 
 // body
