@@ -82,6 +82,7 @@ let contentBibid;
 let citeprocBibid;
 let suppressBibliography = false;
 let fpath = (new URLSearchParams(window.location.search)).get('filepath');
+const port = (new URLSearchParams(window.location.search)).get('port') ?? '9877';
 
 
 // body
@@ -610,7 +611,7 @@ function hideStatus()
     status.style.display = 'none';
 }
 
-const websocketUrl = "ws://localhost:9877/";
+const websocketUrl = `ws://localhost:${port}/`;
 let _websocket;
 let _websocketResolve;
 let _websocketPromise = new Promise((resolve, reject) => {
@@ -657,10 +658,12 @@ async function initWebsocket()
 
         // change browser url
         if (message.filepath != fpath) {
-            const url = "?filepath=" + encodeURIComponent(message.filepath);
+            const urlParams = new URLSearchParams({filepath: message.filepath});
+            if(port != '9877')
+                urlParams.set('port', port);
             fpath = message.filepath;
             window.document.title = 'pmpm - '+fpath;
-            history.pushState({fpath:fpath}, fpath, url);
+            history.pushState({fpath:fpath}, fpath, '?'+urlParams);
         } else {
             history.replaceState({fpath:fpath}, fpath);
         }

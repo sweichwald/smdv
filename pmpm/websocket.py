@@ -79,7 +79,9 @@ BIBQUEUE = None
 BIBPROCESSING = False
 LASTBIB = None
 
-NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm"
+if not RUNTIME_DIR.is_dir():
+    os.mkdir(RUNTIME_DIR)
 PIPE_LOST = asyncio.Event()
 
 
@@ -93,16 +95,22 @@ def run_websocket_server():
                                          "localhost",
                                          ARGS.port)
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
-    if not NAMED_PIPE.is_fifo():
-        os.mkfifo(NAMED_PIPE)
+    named_pipe = RUNTIME_DIR / "pipe"
+    if not named_pipe.is_fifo():
+        os.mkfifo(named_pipe)
+    client_path = (BASE_DIR / '../client/pmpm.html').resolve()
+    with (RUNTIME_DIR / "client_path").open('w') as f:
+        f.write(str(client_path))
+    with (RUNTIME_DIR / "websocket_port").open('w') as f:
+        f.write(str(ARGS.port))
     EVENT_LOOP.create_task(monitorpipe())
     EVENT_LOOP.create_task(citeproc())
     print('\n'
           f"pmpm-websocket started (port {ARGS.port})\n\n"
-          f"Pipe new content to {NAMED_PIPE}, for example,\n"
-          f"    echo '# Hello World!' > {NAMED_PIPE}\n\n"
+          f"Pipe new content to {named_pipe}, for example,\n"
+          f"    echo '# Hello World!' > {named_pipe}\n\n"
           'Direct your browser to\n'
-          f"    file://{(BASE_DIR / '../client/pmpm.html').resolve()}"
+          f"    file://{client_path}"
           + (f"?port={ARGS.port}\n" if ARGS.port != '9877' else '\n') +
           "to view the rendered markdown"
           )
@@ -114,7 +122,7 @@ async def monitorpipe():
         ReadPipeProtocol,
         os.fdopen(
             os.open(
-                NAMED_PIPE,
+                RUNTIME_DIR / "pipe",
                 os.O_NONBLOCK | os.O_RDONLY),
             'rb')))
     await PIPE_LOST.wait()
