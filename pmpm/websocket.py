@@ -80,8 +80,6 @@ BIBPROCESSING = False
 LASTBIB = None
 
 RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm"
-if not RUNTIME_DIR.is_dir():
-    os.mkdir(RUNTIME_DIR)
 PIPE_LOST = asyncio.Event()
 
 
@@ -95,6 +93,9 @@ def run_websocket_server():
                                          "localhost",
                                          ARGS.port)
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
+
+    if not RUNTIME_DIR.is_dir():
+        os.mkdir(RUNTIME_DIR)
     named_pipe = RUNTIME_DIR / "pipe"
     if not named_pipe.is_fifo():
         os.mkfifo(named_pipe)
