@@ -190,10 +190,13 @@ async def new_pipe_content(instrlist):
     content = instr.decode()
     # filepath passed along
     if content.startswith('<!-- filepath:'):
-        lines = content.split('\n')
-        # given path is relative to home or absolute
-        fpath = ARGS.home / lines.pop(0)[14:-4]
-        content = '\n'.join(lines)
+        endline = content.find('\n', 14)
+        if endline == -1:
+            content = ""
+        else:
+            # given path is relative to home or absolute
+            fpath = ARGS.home / content[14:endline-4]
+            content = content[endline:]
     else:
         fpath = ARGS.home / "LIVE"
     # absolute fpath
