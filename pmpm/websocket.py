@@ -65,7 +65,14 @@ import websockets
 from .utils import BASE_DIR, citeblock_generator, parse_args
 
 
-LRU_CACHE_SIZE = 8192
+LRU_CACHE_SIZE_BLOCK = 8192
+# Use smaller cache size for md2json and citeproc_sub. These change very often
+# , i.e. they do not only cache one block or similar, and their results can be
+# quite large -- easily 100kB or so. Having 1000s of cached entries then would
+# be GBs of memory. Thus, only cache a few items. Then, e.g. going back a few
+# times after a typo or so still hits the cache, but we don't spend a lot of
+# memory even for larger .md files.
+LRU_CACHE_SIZE_FULL_FILE = 10
 
 JSCLIENTS = set()
 
@@ -317,7 +324,7 @@ async def citeproc():
         EVENT_LOOP.create_task(citeproc())
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_FULL_FILE)
 async def citeproc_sub(jsondump, bibid, cwd):
     if jsondump and bibid:
         call = ["pandoc",
@@ -376,7 +383,7 @@ async def uniqueciteprocdict(jsondict, cwd):
     return info, hash(info)
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_FULL_FILE)
 async def md2json(content, cwd):
     proc = await asyncio.subprocess.create_subprocess_exec(
         "pandoc",
@@ -391,7 +398,7 @@ async def md2json(content, cwd):
     return json.loads(stdout.decode())
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_BLOCK)
 async def json2htmlblock(jsontxt, cwd, options):
     return await EVENT_LOOP.run_in_executor(
         None, json2htmlblock_sub, jsontxt, cwd, options)
@@ -419,7 +426,7 @@ def json2htmlblock_sub(jsontxt, cwd, options):
     return [hash(html), html]
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_BLOCK)
 async def json2titleblock(jsontxt, options):
     call = ("pandoc",
             "--from", "json",
