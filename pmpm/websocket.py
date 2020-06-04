@@ -199,6 +199,7 @@ async def new_pipe_content(instrlist):
     if content.startswith('<!-- filepath:'):
         endline = content.find('\n', 14)
         if endline == -1:
+            fpath = ARGS.home / "LIVE"
             content = ""
         else:
             # given path is relative to home or absolute
