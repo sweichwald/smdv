@@ -196,7 +196,7 @@ async def new_pipe_content(instrlist):
         else:
             # given path is relative to home or absolute
             fpath = ARGS.home / content[14:endline-4]
-            content = content[endline:]
+            content = content[endline+1:]
     else:
         fpath = ARGS.home / "LIVE"
     # absolute fpath
