@@ -132,7 +132,7 @@ WantedBy=sockets.target
 Now, enable the `pmpm.socket` instead of the `pmpm.service`, i.e. `systemd --user disable pmpm.service && systemd --user enable pmpm.socket`.
 Now, the `pmpm.service` is started automatically whenever you pipe something to `$XDG_RUNTIME_DIR/pmpm/pipe` or connect to `127.0.0.1:9877`.
 
-**Important**: pmpm renders new contents whenever it receives an `EOF` or a `\0` at the end. A simple `cat somefile.md > $XDG_RUNTIME_DIR/pmpm/pipe` works because it sends an `EOF` at the end. However, with socket activation pmpm doesn't see the `EOF`. Therefore, **you must send a `\0` at the end of your file when using socket activation**. E.g.
+**Important**: pmpm renders new contents whenever it receives an `EOF` or a `\0` at the end. A simple `cat somefile.md > $XDG_RUNTIME_DIR/pmpm/pipe` works because it sends an `EOF` at the end. However, [with socket activation pmpm doesn't see the `EOF`](https://github.com/systemd/systemd/issues/11793#issuecomment-466957732). Therefore, **you must send a `\0` at the end of your file when using socket activation**. E.g.
 ```
 $ cat somefile.md > $XDG_RUNTIME_DIR/pmpm/pipe
 $ echo -n "\0" > $XDG_RUNTIME_DIR/pmpm/pipe
