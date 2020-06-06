@@ -487,10 +487,10 @@ async def json2titleblock(jsontxt, options):
     out = stdout.decode()
     if "revealjs" in options:
         start = out.find('<section id="title-slide">')
-        end = out[start:].find('</section>') + start + 10
+        end = out.find('</section>', start) + 10
     else:
         start = out.find('<header id="title-block-header">')
-        end = out[start:].find('</header>') + start + 9
+        end = out.find('</header>', start) + 9
     html = out[start:end]
     if html:
         return [[hash(html), html]]
@@ -530,6 +530,7 @@ async def md2htmlblocks(content, cwd):
     # <!-- revealjs --> or <!-- revealjs:S -->
     # where S sets the slidelevel
     if content.startswith("<!-- revealjs"):
+        # TODO: Do this without copying content 3 times
         if content[13:].startswith(":") and content[15:].startswith(" -->\n"):
             slidelevel = content[14]
             content = content[20:]
