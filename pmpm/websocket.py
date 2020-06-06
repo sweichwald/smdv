@@ -5,7 +5,7 @@ monitorpipe():
     connects read NAMED_PIPE, reconnects upon PIPE_LOST event
 ReadPipeProtocol:
     buffers piped in content,
-    queues and triggers processqueue when eof or \0 received,
+    queues and triggers processqueue when EOF or \0 received,
     PIPE_LOST event on connection_lost
 progressbar
 processqueue:
@@ -61,6 +61,7 @@ import re
 import subprocess
 import traceback
 import uvloop
+from socket import socket
 import websockets
 from .utils import BASE_DIR, citeblock_generator, parse_args
 
@@ -90,16 +91,38 @@ RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm"
 PIPE_LOST = asyncio.Event()
 
 
+def read_socket_activation_fds():
+    try:
+        import systemd.daemon as sd
+    except ModuleNotFoundError:
+        return (None, None)
+
+    fds = sd.listen_fds()
+    if len(fds) != 2:
+        return (None, None)
+
+    fd_pipe = fd_websocket = None
+    for fd in fds:
+        if sd.is_fifo(fd):
+            if fd_pipe is not None:
+                raise Exception("Already got a pipe")
+            fd_pipe = fd
+        elif sd.is_socket(fd):
+            if fd_websocket is not None:
+                raise Exception("Already got a socket")
+            elif not sd.is_socket_sockaddr(fd, f"127.0.0.1:{ARGS.port}"):
+                raise Exception("Wrong sockaddr")
+            fd_websocket = fd
+        else:
+            raise Exception("Not a pipe or socket")
+
+    return (fd_pipe, fd_websocket)
+
+
 def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args(websocket=True)
-    EVENT_LOOP.set_default_executor(
-        concurrent.futures.ProcessPoolExecutor(max_workers=None))
-    WEBSOCKETS_SERVER = websockets.serve(serve_client,
-                                         "localhost",
-                                         ARGS.port)
-    EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
 
     if not RUNTIME_DIR.is_dir():
         os.mkdir(RUNTIME_DIR)
@@ -111,8 +134,26 @@ def run_websocket_server():
         f.write(str(client_path))
     with (RUNTIME_DIR / "websocket_port").open('w') as f:
         f.write(str(ARGS.port))
-    EVENT_LOOP.create_task(monitorpipe())
+
+    # Try systemd socket activation
+    (fd_pipe, fd_websocket) = read_socket_activation_fds()
+
+    # Start websocket server
+    EVENT_LOOP.set_default_executor(
+        concurrent.futures.ProcessPoolExecutor(max_workers=None))
+    if fd_websocket is not None:
+        WEBSOCKETS_SERVER = websockets.serve(serve_client,
+                                             sock=socket(fileno=fd_websocket))
+    else:
+        WEBSOCKETS_SERVER = websockets.serve(serve_client,
+                                             "127.0.0.1",
+                                             ARGS.port)
+    EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
+
+    # Start pipe server
+    EVENT_LOOP.create_task(monitorpipe(fd_pipe))
     EVENT_LOOP.create_task(citeproc())
+
     print('\n'
           f"pmpm-websocket started (port {ARGS.port})\n\n"
           f"Pipe new content to {named_pipe}, for example,\n"
@@ -125,17 +166,14 @@ def run_websocket_server():
     EVENT_LOOP.run_forever()
 
 
-async def monitorpipe():
+async def monitorpipe(sd_fd):
+    fd = sd_fd if sd_fd is not None else os.open(
+            RUNTIME_DIR / "pipe", os.O_NONBLOCK | os.O_RDONLY)
     EVENT_LOOP.create_task(EVENT_LOOP.connect_read_pipe(
-        ReadPipeProtocol,
-        os.fdopen(
-            os.open(
-                RUNTIME_DIR / "pipe",
-                os.O_NONBLOCK | os.O_RDONLY),
-            'rb')))
+        ReadPipeProtocol, os.fdopen(fd, 'rb')))
     await PIPE_LOST.wait()
     PIPE_LOST.clear()
-    EVENT_LOOP.create_task(monitorpipe())
+    EVENT_LOOP.create_task(monitorpipe(sd_fd))
 
 
 class ReadPipeProtocol(asyncio.Protocol):
@@ -149,7 +187,14 @@ class ReadPipeProtocol(asyncio.Protocol):
             self._queue()
 
     def eof_received(self):
-        self._queue()
+        # Send file content also on EOF, not just on \0
+        # But: Don't send an empty file on EOF. E.g.
+        #     echo -n '# Hello world\0' > pipe 
+        # sends \0 followed by EOF, where the \0 already triggers a _queue().
+        # Without this condition, EOF would then again trigger a _queue() with
+        # empty content, so clients would how nothing instead of "Hello world"
+        if len(self._received):
+            self._queue()
 
     def _queue(self):
         global QUEUE
