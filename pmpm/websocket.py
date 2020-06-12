@@ -5,7 +5,7 @@ monitorpipe():
     connects read NAMED_PIPE, reconnects upon PIPE_LOST event
 ReadPipeProtocol:
     buffers piped in content,
-    queues and triggers processqueue when eof or \0 received,
+    queues and triggers processqueue when EOF or \0 received,
     PIPE_LOST event on connection_lost
 progressbar
 processqueue:
@@ -61,11 +61,19 @@ import re
 import subprocess
 import traceback
 import uvloop
+from socket import socket
 import websockets
 from .utils import BASE_DIR, citeblock_generator, parse_args
 
 
-LRU_CACHE_SIZE = 8192
+LRU_CACHE_SIZE_BLOCK = 8192
+# Use smaller cache size for md2json and citeproc_sub. These change very often
+# , i.e. they do not only cache one block or similar, and their results can be
+# quite large -- easily 100kB or so. Having 1000s of cached entries then would
+# be GBs of memory. Thus, only cache a few items. Then, e.g. going back a few
+# times after a typo or so still hits the cache, but we don't spend a lot of
+# memory even for larger .md files.
+LRU_CACHE_SIZE_FULL_FILE = 10
 
 JSCLIENTS = set()
 
@@ -79,47 +87,93 @@ BIBQUEUE = None
 BIBPROCESSING = False
 LASTBIB = None
 
-NAMED_PIPE = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm_pipe"
+RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm"
 PIPE_LOST = asyncio.Event()
+
+
+def read_socket_activation_fds():
+    try:
+        import systemd.daemon as sd
+    except ModuleNotFoundError:
+        return (None, None)
+
+    fds = sd.listen_fds()
+    if len(fds) != 2:
+        return (None, None)
+
+    fd_pipe = fd_websocket = None
+    for fd in fds:
+        if sd.is_fifo(fd):
+            if fd_pipe is not None:
+                raise Exception("Already got a pipe")
+            fd_pipe = fd
+        elif sd.is_socket(fd):
+            if fd_websocket is not None:
+                raise Exception("Already got a socket")
+            elif not sd.is_socket_sockaddr(fd, f"127.0.0.1:{ARGS.port}"):
+                raise Exception("Wrong sockaddr")
+            fd_websocket = fd
+        else:
+            raise Exception("Not a pipe or socket")
+
+    return (fd_pipe, fd_websocket)
 
 
 def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args(websocket=True)
+
+    if not RUNTIME_DIR.is_dir():
+        os.mkdir(RUNTIME_DIR)
+    named_pipe = RUNTIME_DIR / "pipe"
+    if not named_pipe.is_fifo():
+        os.mkfifo(named_pipe)
+    client_path = (BASE_DIR / '../client/pmpm.html').resolve()
+    with (RUNTIME_DIR / "client_path").open('w') as f:
+        f.write(str(client_path))
+    with (RUNTIME_DIR / "websocket_port").open('w') as f:
+        f.write(str(ARGS.port))
+
+    # Try systemd socket activation
+    (fd_pipe, fd_websocket) = read_socket_activation_fds()
+
+    # Start websocket server
     EVENT_LOOP.set_default_executor(
         concurrent.futures.ProcessPoolExecutor(max_workers=None))
-    WEBSOCKETS_SERVER = websockets.serve(serve_client,
-                                         "localhost",
-                                         ARGS.port)
+    if fd_websocket is not None:
+        WEBSOCKETS_SERVER = websockets.serve(serve_client,
+                                             sock=socket(fileno=fd_websocket))
+    else:
+        WEBSOCKETS_SERVER = websockets.serve(serve_client,
+                                             "127.0.0.1",
+                                             ARGS.port)
     EVENT_LOOP.run_until_complete(WEBSOCKETS_SERVER)
-    if not NAMED_PIPE.is_fifo():
-        os.mkfifo(NAMED_PIPE)
-    EVENT_LOOP.create_task(monitorpipe())
+
+    # Start pipe server
+    EVENT_LOOP.create_task(monitorpipe(fd_pipe))
     EVENT_LOOP.create_task(citeproc())
+
     print('\n'
           f"pmpm-websocket started (port {ARGS.port})\n\n"
-          f"Pipe new content to {NAMED_PIPE}, for example,\n"
-          f"    echo '# Hello World!' > {NAMED_PIPE}\n\n"
+          f"Pipe new content to {named_pipe}, for example,\n"
+          f"    echo '# Hello World!' > {named_pipe}\n\n"
           'Direct your browser to\n'
-          f"    file://{(BASE_DIR / '../client/pmpm.html').resolve()}"
+          f"    file://{client_path}"
           + (f"?port={ARGS.port}\n" if ARGS.port != '9877' else '\n') +
           "to view the rendered markdown"
           )
     EVENT_LOOP.run_forever()
 
 
-async def monitorpipe():
+async def monitorpipe(sd_fd):
+    fd = sd_fd if sd_fd is not None else os.open(
+            RUNTIME_DIR / "pipe", os.O_NONBLOCK | os.O_RDONLY)
     EVENT_LOOP.create_task(EVENT_LOOP.connect_read_pipe(
-        ReadPipeProtocol,
-        os.fdopen(
-            os.open(
-                NAMED_PIPE,
-                os.O_NONBLOCK | os.O_RDONLY),
-            'rb')))
+        ReadPipeProtocol, os.fdopen(fd, 'rb')))
     await PIPE_LOST.wait()
     PIPE_LOST.clear()
-    EVENT_LOOP.create_task(monitorpipe())
+    EVENT_LOOP.create_task(monitorpipe(sd_fd))
 
 
 class ReadPipeProtocol(asyncio.Protocol):
@@ -133,7 +187,14 @@ class ReadPipeProtocol(asyncio.Protocol):
             self._queue()
 
     def eof_received(self):
-        self._queue()
+        # Send file content also on EOF, not just on \0
+        # But: Don't send an empty file on EOF. E.g.
+        #     echo -n '# Hello world\0' > pipe 
+        # sends \0 followed by EOF, where the \0 already triggers a _queue().
+        # Without this condition, EOF would then again trigger a _queue() with
+        # empty content, so clients would how nothing instead of "Hello world"
+        if len(self._received):
+            self._queue()
 
     def _queue(self):
         global QUEUE
@@ -181,10 +242,14 @@ async def new_pipe_content(instrlist):
     content = instr.decode()
     # filepath passed along
     if content.startswith('<!-- filepath:'):
-        lines = content.split('\n')
-        # given path is relative to home or absolute
-        fpath = ARGS.home / lines.pop(0)[14:-4]
-        content = '\n'.join(lines)
+        endline = content.find('\n', 14)
+        if endline == -1:
+            fpath = ARGS.home / "LIVE"
+            content = ""
+        else:
+            # given path is relative to home or absolute
+            fpath = ARGS.home / content[14:endline-3]
+            content = content[endline+1:]
     else:
         fpath = ARGS.home / "LIVE"
     # absolute fpath
@@ -305,7 +370,7 @@ async def citeproc():
         EVENT_LOOP.create_task(citeproc())
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_FULL_FILE)
 async def citeproc_sub(jsondump, bibid, cwd):
     if jsondump and bibid:
         call = ["pandoc",
@@ -364,7 +429,7 @@ async def uniqueciteprocdict(jsondict, cwd):
     return info, hash(info)
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_FULL_FILE)
 async def md2json(content, cwd):
     proc = await asyncio.subprocess.create_subprocess_exec(
         "pandoc",
@@ -379,7 +444,7 @@ async def md2json(content, cwd):
     return json.loads(stdout.decode())
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_BLOCK)
 async def json2htmlblock(jsontxt, cwd, options):
     return await EVENT_LOOP.run_in_executor(
         None, json2htmlblock_sub, jsontxt, cwd, options)
@@ -407,7 +472,7 @@ def json2htmlblock_sub(jsontxt, cwd, options):
     return [hash(html), html]
 
 
-@alru_cache(maxsize=LRU_CACHE_SIZE)
+@alru_cache(maxsize=LRU_CACHE_SIZE_BLOCK)
 async def json2titleblock(jsontxt, options):
     call = ("pandoc",
             "--from", "json",
@@ -422,10 +487,10 @@ async def json2titleblock(jsontxt, options):
     out = stdout.decode()
     if "revealjs" in options:
         start = out.find('<section id="title-slide">')
-        end = out[start:].find('</section>') + start + 10
+        end = out.find('</section>', start) + 10
     else:
         start = out.find('<header id="title-block-header">')
-        end = out[start:].find('</header>') + start + 9
+        end = out.find('</header>', start) + 9
     html = out[start:end]
     if html:
         return [[hash(html), html]]
@@ -465,6 +530,7 @@ async def md2htmlblocks(content, cwd):
     # <!-- revealjs --> or <!-- revealjs:S -->
     # where S sets the slidelevel
     if content.startswith("<!-- revealjs"):
+        # TODO: Do this without copying content 3 times
         if content[13:].startswith(":") and content[15:].startswith(" -->\n"):
             slidelevel = content[14]
             content = content[20:]
