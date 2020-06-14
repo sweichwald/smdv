@@ -87,3 +87,7 @@ pre.numberSource code > span > a:first-child::before {
 }
 
 .reveal .slides > section > section { text-align:left; }
+
+/* solarized theme effectively changes e.g. $\mu$ in heading to $\Mu$ due to text-transform: uppercase. Don't do that */
+h1 .math, h2 .math, h3 .math, h4 .math, h5 .math, h6 .math { text-transform: none; }
+
