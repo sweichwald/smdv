@@ -101,7 +101,7 @@ scrollToFirstChange = (firstChange, firstChangeCompare) => {
     // Scroll to first changed slide/subslide
     // TODO: What about fragments?
     //       Show all fragments on changed slide? (+Infinity instead of newIndices.f)
-    const newIndices = Reveal.getIndices(slide !== undefined ? slide : firstChange);
+    const newIndices = Reveal.getIndices(slide ?? firstChange);
     Reveal.slide(newIndices.h, newIndices.v, +Infinity);
 
     // Re-enable transitions
