@@ -134,7 +134,7 @@ def run_websocket_server():
         f.write(str(client_path))
     client_path_revealjs = (BASE_DIR / '../client/pmpm_revealjs.html').resolve()
     with (RUNTIME_DIR / "client_path_revealjs").open('w') as f:
-        f.write(str(client_path))
+        f.write(str(client_path_revealjs))
     with (RUNTIME_DIR / "websocket_port").open('w') as f:
         f.write(str(ARGS.port))
 
