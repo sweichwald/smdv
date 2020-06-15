@@ -78,6 +78,7 @@ const footnotesChildren = footnotes.children;
 const references = document.getElementById('references');
 const referencesTitle = document.getElementById('bibliography');
 let wrappingTagName = 'div';
+let fpathLoadMessagePrefix = 'filepath:';
 let contentBibid;
 let citeprocBibid;
 let suppressBibliography = false;
@@ -228,7 +229,7 @@ function localLinkClickEvent(el)
     if(!newFullFpath.endsWith('.md'))
         return true;
 
-    getWebsocket().then((websocket) => websocket.send('filepath:' + newFullFpath));
+    getWebsocket().then((websocket) => websocket.send(fpathLoadMessagePrefix + newFullFpath));
     return false;
 }
 
@@ -708,14 +709,18 @@ window.onpopstate = function (event) {
 
     fpath = newFpath;
     window.document.title = 'pmpm - '+fpath;
-    getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
+    getWebsocket().then((websocket) => websocket.send(fpathLoadMessagePrefix + fpath));
 };
 
-function init(customWrappingTagName)
+function init(customWrappingTagName, customFpathLoadMessagePrefix)
 {
     // Custom wrapping tag name, for slides
     if(customWrappingTagName !== undefined)
         wrappingTagName = customWrappingTagName;
+
+    // Custom fpath load message prefix, for slides
+    if(customFpathLoadMessagePrefix !== undefined)
+	fpathLoadMessagePrefix = customFpathLoadMessagePrefix;
    
     // Load websocket
     initWebsocket();
@@ -723,7 +728,7 @@ function init(customWrappingTagName)
     // Load initial document if any
     if(fpath && fpath !== 'LIVE') {
         window.document.title = 'pmpm - '+fpath;
-        getWebsocket().then((websocket) => websocket.send('filepath:' + fpath));
+        getWebsocket().then((websocket) => websocket.send(fpathLoadMessagePrefix + fpath));
     } else {
         // When refreshing the page, it may be irritatingly empty --> show this
         getWebsocket().then((_) => showStatusInfo('Just connected to '+websocketUrl+'. Pipe something to pmpm ;-)'));

@@ -132,6 +132,9 @@ def run_websocket_server():
     client_path = (BASE_DIR / '../client/pmpm.html').resolve()
     with (RUNTIME_DIR / "client_path").open('w') as f:
         f.write(str(client_path))
+    client_path_revealjs = (BASE_DIR / '../client/pmpm_revealjs.html').resolve()
+    with (RUNTIME_DIR / "client_path_revealjs").open('w') as f:
+        f.write(str(client_path))
     with (RUNTIME_DIR / "websocket_port").open('w') as f:
         f.write(str(ARGS.port))
 
@@ -225,7 +228,8 @@ async def processqueue():
                 await new_pipe_content(q[1])
             # assume it can only be a filepath request then
             else:
-                await new_filepath_request(q[1])
+                await new_filepath_request(
+                        q[1], True if q[0] == 'revealjsfilepath' else False)
         except Exception as e:
             message = {"error": str(e)}
             traceback.print_exc()
@@ -257,11 +261,12 @@ async def new_pipe_content(instrlist):
     await process_new_content(fpath, content)
 
 
-async def new_filepath_request(fpath):
+async def new_filepath_request(fpath, revealjs):
     content = await EVENT_LOOP.run_in_executor(None,
                                                readfile,
                                                fpath)
-    await process_new_content(fpath, content)
+    await process_new_content(
+            fpath, "<!-- revealjs -->" + content if revealjs else content)
 
 
 async def process_new_content(fpath, content):
@@ -330,9 +335,12 @@ async def handle_message(client: websockets.WebSocketServerProtocol,
                          message: str):
     """ handle a message sent by one of the clients
     """
+    global QUEUE
     if message.startswith('filepath:'):
-        global QUEUE
         QUEUE = ('filepath', ARGS.home / message[9:])
+        EVENT_LOOP.create_task(processqueue())
+    elif message.startswith('revealjs:filepath:'):
+        QUEUE = ('revealjsfilepath', ARGS.home / message[18:])
         EVENT_LOOP.create_task(processqueue())
     # assume it can only be a citeproc request then
     else:
