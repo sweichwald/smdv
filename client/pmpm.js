@@ -720,8 +720,8 @@ function init(customWrappingTagName, customFpathLoadMessagePrefix)
 
     // Custom fpath load message prefix, for slides
     if(customFpathLoadMessagePrefix !== undefined)
-	fpathLoadMessagePrefix = customFpathLoadMessagePrefix;
-   
+        fpathLoadMessagePrefix = customFpathLoadMessagePrefix;
+
     // Load websocket
     initWebsocket();
 
