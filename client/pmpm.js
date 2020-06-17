@@ -422,6 +422,10 @@ function updateRefsFromCiteprocResult()
         replaceRefList(refList);
         showHideRefList();
     }
+
+    // Signal that rendering is finished
+    if(_citeprocDoneResolve)
+        _citeprocDoneResolve();
 }
 
 let _lastCiteprocHtml;
@@ -447,6 +451,8 @@ function citeprocResultEvent(html, bibid)
 
 const _textcitesCache = {};
 let _refsElement;
+let _citeprocDoneResolve;
+let _citeprocDoneReject;
 function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
@@ -572,11 +578,13 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     // Do outside firstchange !== undefined check, because this can change without htmlblocks changes
     showHideRefList();
 
+    const blockRenderingPromise = Promise.all(renderPromises);
+
     if(firstChange !== undefined) {
         // scroll (first changed child of) first changed block into view
         // But only after rendering is finished. Otherwise the first change detection
         // may find a still-rendering but unchanged element.
-        Promise.all(renderPromises).finally(() => {
+        blockRenderingPromise.finally(() => {
             scrollToFirstChange(firstChange, firstChangeCompare);
         });
     }
@@ -588,9 +596,20 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     } else
         referencesTitle.style.display = "none";
 
+    const citeprocRenderingPromise = new Promise((resolve, reject) => {
+        _citeprocDoneResolve = resolve;
+        _citeprocDoneReject = reject;
+    });
+
     // If a citeproc response came in already for this content (before the htmlblocks!), apply it now
     if(contentBibid != citeprocBibid && _lastCiteprocBibid == contentBibid)
         updateRefsFromCiteprocResult();
+
+    // After all is done, emit pmpmRenderingDone event
+    // This is used in Kate plugin
+    Promise.all([blockRenderingPromise, citeprocRenderingPromise]).then(() => {
+        document.dispatchEvent(new Event('pmpmRenderingDone'));
+    });
 }
 
 // websockets

@@ -29,13 +29,13 @@ __pmpm features the following__ (_and differs from [smdv][smdv] in various ways_
   (_avoiding the slower detour:
   PUT to flask -> via websocket to renderer -> via websocket to browser_)
 * pmpm implements an __auto-scroll-to-first-change__ feature for a better live preview experience
-* __live preview__ for vim ([vim2pmpm][vim]) and kate is doable
+* __live preview__ for vim ([vim2pmpm][vim]) and kate ([kpmpm][kate]) is doable
 and basically can be implemented for any editor by regularly piping the current markdown to pmpm
 --- as a fallback, watch a file for changes using inotify and pipe it to pmpm upon changes to get preview-on-save
 * to enable relative paths for images,
   the path of the currently edited file can be passed along to pmpm
   by adding a first line `<!-- filepath:/the/path/to/this.md -->`
-  ([vim2pmpm][vim] does this automatically)
+  ([vim2pmpm][vim] and [kpmpm][kate] do this automatically)
 * for __increased speed__,
   pmpm aims to make use of async where possible
   and implements block-wise async lru_cached pandoc-backed rendering
@@ -247,4 +247,5 @@ nocite: |
 [pandocmarkdown]: https://pandoc.org/MANUAL.html#pandocs-markdown
 [smdv]: https://github.com/flaport/smdv/
 [vim]: https://github.com/sweichwald/vim2pmpm
+[kate]: https://github.com/tmistele/kpmpm
 
