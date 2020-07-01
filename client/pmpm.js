@@ -601,6 +601,12 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
         _citeprocDoneReject = reject;
     });
 
+    // We can immediately resolve the citeprocRenderingPromise, if
+    // - citeproc is already correctly loaded since bibid is unchanged
+    // - this is a document without any bibliography
+    if(contentBibid == citeprocBibid || null === contentBibid)
+        _citeprocDoneResolve();
+
     // If a citeproc response came in already for this content (before the htmlblocks!), apply it now
     if(contentBibid != citeprocBibid && _lastCiteprocBibid == contentBibid)
         updateRefsFromCiteprocResult();
