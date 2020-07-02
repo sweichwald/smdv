@@ -503,7 +503,7 @@ div#status {
     text-align: center;
 }
 
-#toc.open #toc-toggle {
+#toc.open .toc-toggle {
     font-weight: bold;
 }
 
