@@ -696,17 +696,19 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     const blockRenderingPromise = Promise.all(renderPromises);
 
     if(firstChange !== undefined) {
-        // Update table of contents if toc is currently visible or mark as
-        // to-be-updated when it becomes visible next time
-        if(tocVisible)
-            updateToc();
-        else
-            tocUpdated = false;
-
-        // scroll (first changed child of) first changed block into view
-        // But only after rendering is finished. Otherwise the first change detection
-        // may find a still-rendering but unchanged element.
         blockRenderingPromise.finally(() => {
+            // Update table of contents if toc is currently visible or mark as
+            // to-be-updated when it becomes visible next time
+            // But only after rendering is finished. Otherwise katex in headings may not
+            // be rendered yet and cannot be copied to toc.
+            if(tocVisible)
+                updateToc();
+            else
+                tocUpdated = false;
+
+            // scroll (first changed child of) first changed block into view
+            // But only after rendering is finished. Otherwise the first change detection
+            // may find a still-rendering but unchanged element.
             scrollToFirstChange(firstChange, firstChangeCompare);
         });
     }
