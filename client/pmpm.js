@@ -67,6 +67,113 @@ async function getKatex() {
     return _katex;
 }
 
+// Table of contents
+const toc = document.getElementById('toc');
+const tocContent = document.getElementById('toc-content');
+let tocUpdated = false;
+let tocVisible = false;
+
+function updateToc()
+{
+    // Remove current content
+    tocContent.textContent = '';
+
+    // Build toc based on headings
+    // Use container.parentNode because this also includes references
+    const hs = container.parentNode.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    const ols = [tocContent];
+    let lastLi = undefined;
+    for(const h of hs) {
+
+        const level = parseInt(h.nodeName[1]);
+
+        if(level == 1) {
+            // Don't show the "Title" in the <header>
+            if(h.classList.contains('title') && h.parentNode.nodeName == 'HEADER')
+                continue;
+            // Don't show the References header if the references are hidden
+            // (either because no references exist or because a custom div is in the text)
+            if(h.id === 'bibliography' && references.style.display === 'none')
+                continue;
+        }
+
+        const lastLevel = ols.length;
+
+        let ol;
+        if(level > lastLevel) {
+            ol = ols[lastLevel-1];
+            let tmp = lastLevel;
+
+            // First try to level-up inside last-added <li>
+            if(lastLi !== undefined) {
+                ol = document.createElement('ol');
+                lastLi.appendChild(ol);
+                ols.push(ol);
+                tmp++;
+            }
+
+            // If we are at the beginning (no lastLi) or if one level was skipped, insert dummy levels
+            while(tmp < level) {
+
+                const span = document.createElement('span');
+                span.classList.add('toc-missing');
+                span.textContent = 'missing';
+                const li = document.createElement('li');
+                li.appendChild(span);
+                ol.appendChild(li);
+
+                ol = document.createElement('ol');
+                li.appendChild(ol);
+                ols.push(ol);
+                tmp++;
+            }
+
+        } else if(level < lastLevel) {
+            let tmp = lastLevel;
+            while(tmp > level) {
+                ols.pop();
+                tmp--;
+            }
+            ol = ols[ols.length-1];
+        } else {
+            ol = ols[lastLevel-1];
+        }
+
+        const a = document.createElement('a');
+        // cloneNode so that math works also in toc
+        for(const el of h.childNodes)
+            a.appendChild(el.cloneNode(true));
+        // Abuse footnote link mechanism
+        // TODO: Make this generic
+        a.href = '#';
+        a._footnoteHref = h;
+        a.onclick = footnoteClickEvent;
+
+        const li = document.createElement('li');
+        li.appendChild(a);
+
+        ol.appendChild(li);
+
+        lastLi = li;
+    }
+}
+
+function toggleToc()
+{
+    if(!tocVisible) {
+        tocVisible = true;
+        if(!tocUpdated) {
+            updateToc();
+            tocUpdated = true;
+        }
+        toc.classList.add('open');
+        tocContent.style.display = 'block';
+    } else {
+        tocVisible = false;
+        tocContent.style.display = 'none';
+        toc.classList.remove('open');
+    }
+}
 
 // global variables
 const status = document.getElementById('status');
@@ -589,6 +696,13 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     const blockRenderingPromise = Promise.all(renderPromises);
 
     if(firstChange !== undefined) {
+        // Update table of contents if toc is currently visible or mark as
+        // to-be-updated when it becomes visible next time
+        if(tocVisible)
+            updateToc();
+        else
+            tocUpdated = false;
+
         // scroll (first changed child of) first changed block into view
         // But only after rendering is finished. Otherwise the first change detection
         // may find a still-rendering but unchanged element.
@@ -757,6 +871,13 @@ function init(customWrappingTagName, customFpathLoadMessagePrefix)
 
     // Load websocket
     initWebsocket();
+
+    // Table of content toggle
+    // Is ignored if no <div id="toc"> exists (e.g. revelajs)
+    toc?.getElementsByClassName('toc-toggle')[0]?.addEventListener('click', (ev) => {
+        toggleToc();
+        ev.preventDefault();
+    });
 
     // Load initial document if any
     if(fpath && fpath !== 'LIVE') {

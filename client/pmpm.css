@@ -409,7 +409,12 @@ table td {
 @media screen {
   body {
     margin-bottom: 80%;
+    max-width: none;
+  }
+
+  .markdown-body {
     max-width: 44em;
+    margin: 0px auto;
   }
 }
 code, pre, .sourceCode {
@@ -455,4 +460,54 @@ div#status {
 /* Not found citations, only pandoc version < 2.11 */
 .citeproc-not-found {
     color: #ad0625;
+}
+
+/* table of contents */
+#toc {
+    float: right;
+    margin-left: 1em;
+
+    border: solid 1px black;
+
+    opacity: .5;
+    padding-right: .5em;
+    padding-left: .5em;
+}
+
+#toc.open {
+    opacity: 1;
+    padding-left: 1.5em;
+    padding-right: 1.5em;
+}
+
+#toc ol {
+    counter-reset: item;
+    padding-left: 1em;
+    margin-top: 0em;
+    margin-bottom: 0em;
+}
+
+#toc ol > li {
+    counter-increment: item;
+}
+
+#toc ol ol > li {
+    display: block;
+}
+
+#toc ol ol > li:before {
+    content: counters(item, ".") ". ";
+}
+
+.toc-toggle {
+    text-align: center;
+}
+
+#toc.open #toc-toggle {
+    font-weight: bold;
+}
+
+.toc-missing {
+    color: #898887;
+    font-style: italic;
 }
