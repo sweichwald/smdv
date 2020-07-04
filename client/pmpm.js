@@ -143,11 +143,9 @@ function updateToc()
         // cloneNode so that math works also in toc
         for(const el of h.childNodes)
             a.appendChild(el.cloneNode(true));
-        // Abuse footnote link mechanism
-        // TODO: Make this generic
         a.href = '#';
-        a._footnoteHref = h;
-        a.onclick = footnoteClickEvent;
+        a._pmpmNodeLink = h;
+        a.onclick = nodeLinkClickEvent;
 
         const li = document.createElement('li');
         li.appendChild(a);
@@ -340,7 +338,7 @@ function localLinkClickEvent(el)
     return false;
 }
 
-function footnoteClickEvent(event)
+function nodeLinkClickEvent(event)
 {
     let a = event.target;
     while(a && a.tagName != 'A')
@@ -350,7 +348,7 @@ function footnoteClickEvent(event)
 
     // Push state so browser back button jumps to previous position
     history.pushState(history.state, fpath);
-    window.scrollTo({top: a._footnoteHref.getBoundingClientRect().top + window.pageYOffset});
+    window.scrollTo({top: a._pmpmNodeLink.getBoundingClientRect().top + window.pageYOffset});
     return false;
 }
 
@@ -387,12 +385,12 @@ function extractFootnotes(newEl, newFn)
             if(aback.getAttribute('href') == '#fnref'+num) {
                 const aref = document.getElementById('fnref'+num);
                 aref.removeAttribute('id'); // not unique
-                aref._footnoteHref = aback;
-                aref.onclick = footnoteClickEvent;
+                aref._pmpmNodeLink = aback;
+                aref.onclick = nodeLinkClickEvent;
 
                 li._footnoteAref = aref;
-                aback._footnoteHref = aref;
-                aback.onclick = footnoteClickEvent;
+                aback._pmpmNodeLink = aref;
+                aback.onclick = nodeLinkClickEvent;
 
                 break; // Should only be one such link
             }
