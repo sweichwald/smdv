@@ -68,10 +68,11 @@ async function getKatex() {
 }
 
 // Table of contents
-const toc = document.getElementById('toc');
+const tocContainer = document.getElementById('toc');
 const tocContent = document.getElementById('toc-content');
+let tocEnabled = false;
 let tocUpdated = false;
-let tocVisible = false;
+let tocContentVisible = false;
 
 function updateToc()
 {
@@ -158,18 +159,18 @@ function updateToc()
 
 function toggleToc()
 {
-    if(!tocVisible) {
-        tocVisible = true;
+    if(!tocContentVisible) {
+        tocContentVisible = true;
         if(!tocUpdated) {
             updateToc();
             tocUpdated = true;
         }
-        toc.classList.add('open');
+        tocContainer.classList.add('open');
         tocContent.style.display = 'block';
     } else {
-        tocVisible = false;
+        tocContentVisible = false;
         tocContent.style.display = 'none';
-        toc.classList.remove('open');
+        tocContainer.classList.remove('open');
     }
 }
 
@@ -691,15 +692,18 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     // Do outside firstchange !== undefined check, because this can change without htmlblocks changes
     showHideRefList();
 
+    // Show/hide toc container
+    tocContainer?.style.setProperty('display', tocEnabled ? 'block' : 'none');
+
     const blockRenderingPromise = Promise.all(renderPromises);
 
     if(firstChange !== undefined) {
         blockRenderingPromise.finally(() => {
-            // Update table of contents if toc is currently visible or mark as
-            // to-be-updated when it becomes visible next time
+            // Update table of contents if toc is enabled and currently visible.
+            // Otherwise, mark toc as to-be-updated when it becomes visible next time.
             // But only after rendering is finished. Otherwise katex in headings may not
             // be rendered yet and cannot be copied to toc.
-            if(tocVisible)
+            if(tocEnabled && tocContentVisible)
                 updateToc();
             else
                 tocUpdated = false;
@@ -709,6 +713,14 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
             // may find a still-rendering but unchanged element.
             scrollToFirstChange(firstChange, firstChangeCompare);
         });
+    } else {
+        // Even if no html block is changed, we must update the toc if it
+        // is visible and still has an old version.
+        // Can happen e.g. if we start with toc visible, then get 'toc: false',
+        // then change heading (so that toc is not directly updated),
+        // then again get 'toc: true' (without changing any blocks)
+        if(tocEnabled && tocContentVisible && !tocUpdated)
+            updateToc();
     }
 
     // Set references title
@@ -783,6 +795,7 @@ async function initWebsocket()
 
         if(message.htmlblocks !== undefined) {
             // update page
+            tocEnabled = message.toc;
             contentBibid = message.bibid;
             suppressBibliography = message["suppress-bibliography"];
             updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);
@@ -874,7 +887,7 @@ function init(customWrappingTagName, customFpathLoadMessagePrefix)
 
     // Table of content toggle
     // Is ignored if no <div id="toc"> exists (e.g. revelajs)
-    toc?.getElementsByClassName('toc-toggle')[0]?.addEventListener('click', (ev) => {
+    tocContainer?.getElementsByClassName('toc-toggle')[0]?.addEventListener('click', (ev) => {
         toggleToc();
         ev.preventDefault();
     });
