@@ -493,20 +493,20 @@ h2#toc-title {
 
 #TOC ol {
     counter-reset: item;
-    padding-left: 1em;
-    margin-top: 0em;
-    margin-bottom: 0em;
+    margin: 0;
+    padding: 0;
 }
 
 #TOC ol > li {
     counter-increment: item;
-}
-
-#TOC ol ol > li {
     display: block;
 }
 
-#TOC ol ol > li:before {
+#TOC ol ol > li {
+    padding-left: 1.1em;
+}
+
+#TOC ol > li:before {
     content: counters(item, ".") ". ";
 }
 
