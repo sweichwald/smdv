@@ -68,7 +68,7 @@ async function getKatex() {
 }
 
 // Table of contents
-const tocContainer = document.getElementById('toc');
+const tocContainer = document.getElementById('TOC');
 const tocContent = document.getElementById('toc-content');
 let tocEnabled = false;
 let tocUpdated = false;
