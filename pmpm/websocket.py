@@ -132,7 +132,8 @@ def run_websocket_server():
     client_path = (BASE_DIR / '../client/pmpm.html').resolve()
     with (RUNTIME_DIR / "client_path").open('w') as f:
         f.write(str(client_path))
-    client_path_revealjs = (BASE_DIR / '../client/pmpm_revealjs.html').resolve()
+    client_path_revealjs = (BASE_DIR / '../client/pmpm_revealjs.html'
+                            ).resolve()
     with (RUNTIME_DIR / "client_path_revealjs").open('w') as f:
         f.write(str(client_path_revealjs))
     with (RUNTIME_DIR / "websocket_port").open('w') as f:
@@ -192,7 +193,7 @@ class ReadPipeProtocol(asyncio.Protocol):
     def eof_received(self):
         # Send file content also on EOF, not just on \0
         # But: Don't send an empty file on EOF. E.g.
-        #     echo -n '# Hello world\0' > pipe 
+        #     echo -n '# Hello world\0' > pipe
         # sends \0 followed by EOF, where the \0 already triggers a _queue().
         # Without this condition, EOF would then again trigger a _queue() with
         # empty content, so clients would how nothing instead of "Hello world"
