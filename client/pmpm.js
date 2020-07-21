@@ -57,8 +57,8 @@ async function getKatex() {
     if(_katex === undefined) {
         if(_katexLoadPromise === undefined) {
             _katexLoadPromise = Promise.all([
-                loadScript('./3rdparty/katex/0.11.1/katex.min.js'),
-                loadStyle('./3rdparty/katex/0.11.1/katex.min.css')
+                loadScript('./3rdparty/katex/0.12.0/katex.min.js'),
+                loadStyle('./3rdparty/katex/0.12.0/katex.min.css')
             ]);
         }
         await _katexLoadPromise;
