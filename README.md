@@ -112,8 +112,8 @@ ExecStart=%h/.local/bin/pmpm-websocket --math katex --home %h --port 9877
 WantedBy=default.target
 ```
 For mathml math mode replace katex with mathml.
-Then you can start/restart/stop pmpm with standard systemd commands like `systemd --user start pmpm.service`.
-pmpm will be started automatically at startup if you do `systemd --user enable pmpm.service`.
+Then you can start/restart/stop pmpm with standard systemd commands like `systemctl --user start pmpm.service`.
+pmpm will be started automatically at startup if you do `systemctl --user enable pmpm.service`.
 
 ### Socket activation
 
@@ -129,7 +129,7 @@ ListenStream=127.0.0.1:9877
 [Install]
 WantedBy=sockets.target
 ```
-Now, enable the `pmpm.socket` instead of the `pmpm.service`, i.e. `systemd --user disable pmpm.service && systemd --user enable pmpm.socket`.
+Now, enable the `pmpm.socket` instead of the `pmpm.service`, i.e. `systemctl --user disable pmpm.service && systemctl --user enable pmpm.socket`.
 Now, the `pmpm.service` is started automatically whenever you pipe something to `$XDG_RUNTIME_DIR/pmpm/pipe` or connect to `127.0.0.1:9877`.
 
 **Important**: pmpm renders new contents whenever it receives an `EOF` or a `\0` at the end. A simple `cat somefile.md > $XDG_RUNTIME_DIR/pmpm/pipe` works because it sends an `EOF` at the end. However, [with socket activation pmpm doesn't see the `EOF`](https://github.com/systemd/systemd/issues/11793#issuecomment-466957732). Therefore, **you must send a `\0` at the end of your file when using socket activation**. E.g.
