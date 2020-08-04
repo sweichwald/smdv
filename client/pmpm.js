@@ -106,7 +106,7 @@ function updateToc()
         const lastHLevel = uls[uls.length-1]._pmpmLastHlevel;
 
         let ul;
-        if(hLevel > lastHLevel) {
+        if(hLevel > lastHLevel && lastLi) {
             // Jump at most one level up, even if one level was left out
             // e.g. "# one\n### three"
             ul = document.createElement('ul');
