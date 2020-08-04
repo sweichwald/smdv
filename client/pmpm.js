@@ -86,12 +86,12 @@ function updateToc()
     // Use container.parentNode because this also includes references
     const hs = container.parentNode.querySelectorAll('h1, h2, h3, h4, h5, h6');
     const uls = [tocContent];
+    tocContent._pmpmLastHlevel = 1;
     let lastLi = undefined;
     for(const h of hs) {
 
-        const level = parseInt(h.nodeName[1]);
-
-        if(level == 1) {
+        const hLevel = parseInt(h.nodeName[1]);
+        if(hLevel == 1) {
             // Don't show the "Title" in the <header>
             if(h.classList.contains('title') && h.parentNode.nodeName == 'HEADER')
                 continue;
@@ -101,47 +101,28 @@ function updateToc()
                 continue;
         }
 
-        const lastLevel = uls.length;
+        const lastHLevel = uls[uls.length-1]._pmpmLastHlevel;
 
         let ul;
-        if(level > lastLevel) {
-            ul = uls[lastLevel-1];
-            let tmp = lastLevel;
-
-            // First try to level-up inside last-added <li>
-            if(lastLi !== undefined) {
-                ul = document.createElement('ul');
-                lastLi.appendChild(ul);
-                uls.push(ul);
-                tmp++;
-            }
-
-            // If we are at the beginning (no lastLi) or if one level was skipped, insert dummy levels
-            while(tmp < level) {
-
-                const span = document.createElement('span');
-                span.classList.add('toc-missing');
-                span.textContent = 'missing';
-                const li = document.createElement('li');
-                li.appendChild(span);
-                ul.appendChild(li);
-
-                ul = document.createElement('ul');
-                li.appendChild(ul);
-                uls.push(ul);
-                tmp++;
-            }
-
-        } else if(level < lastLevel) {
-            let tmp = lastLevel;
-            while(tmp > level) {
-                uls.pop();
-                tmp--;
-            }
+        if(hLevel > lastHLevel) {
+            // Jump at most one level up, even if one level was left out
+            // e.g. "# one\n### three"
+            ul = document.createElement('ul');
+            lastLi.appendChild(ul);
+            uls.push(ul);
+        } else if(hLevel < lastHLevel) {
+            // Jump down to the lowest ul with _pmpmLastHlevel >= hLevel
             ul = uls[uls.length-1];
+            while(uls.length > 1 && uls[uls.length-2]._pmpmLastHlevel >= hLevel) {
+                uls.pop();
+                ul = uls[uls.length-1];
+            }
         } else {
-            ul = uls[lastLevel-1];
+            ul = uls[uls.length-1];
         }
+
+        // Each ul has a "hLevel" which is that from the last added <li>
+        ul._pmpmLastHlevel = hLevel;
 
         const a = document.createElement('a');
         // cloneNode so that math works also in toc
