@@ -485,6 +485,7 @@ h2#toc-title {
     margin-bottom: 0;
     font-size: 1em;
     line-height: inherit;
+    cursor: pointer;
 }
 
 #TOC.open h2#toc-title {
