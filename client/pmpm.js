@@ -85,7 +85,7 @@ function updateToc()
     // Build toc based on headings
     // Use container.parentNode because this also includes references
     const hs = container.parentNode.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    const ols = [tocContent];
+    const uls = [tocContent];
     let lastLi = undefined;
     for(const h of hs) {
 
@@ -101,18 +101,18 @@ function updateToc()
                 continue;
         }
 
-        const lastLevel = ols.length;
+        const lastLevel = uls.length;
 
-        let ol;
+        let ul;
         if(level > lastLevel) {
-            ol = ols[lastLevel-1];
+            ul = uls[lastLevel-1];
             let tmp = lastLevel;
 
             // First try to level-up inside last-added <li>
             if(lastLi !== undefined) {
-                ol = document.createElement('ol');
-                lastLi.appendChild(ol);
-                ols.push(ol);
+                ul = document.createElement('ul');
+                lastLi.appendChild(ul);
+                uls.push(ul);
                 tmp++;
             }
 
@@ -124,23 +124,23 @@ function updateToc()
                 span.textContent = 'missing';
                 const li = document.createElement('li');
                 li.appendChild(span);
-                ol.appendChild(li);
+                ul.appendChild(li);
 
-                ol = document.createElement('ol');
-                li.appendChild(ol);
-                ols.push(ol);
+                ul = document.createElement('ul');
+                li.appendChild(ul);
+                uls.push(ul);
                 tmp++;
             }
 
         } else if(level < lastLevel) {
             let tmp = lastLevel;
             while(tmp > level) {
-                ols.pop();
+                uls.pop();
                 tmp--;
             }
-            ol = ols[ols.length-1];
+            ul = uls[uls.length-1];
         } else {
-            ol = ols[lastLevel-1];
+            ul = uls[lastLevel-1];
         }
 
         const a = document.createElement('a');
@@ -154,7 +154,7 @@ function updateToc()
         const li = document.createElement('li');
         li.appendChild(a);
 
-        ol.appendChild(li);
+        ul.appendChild(li);
 
         lastLi = li;
     }
