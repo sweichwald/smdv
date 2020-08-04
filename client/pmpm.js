@@ -70,7 +70,10 @@ async function getKatex() {
 // Table of contents
 const tocContainer = document.getElementById('TOC');
 const tocContent = document.getElementById('toc-content');
+const tocTitle = document.getElementById('toc-title');
+const tocTitleTextDefault = tocTitle?.textContent;
 let tocEnabled = false;
+let tocTitleText;
 let tocUpdated = false;
 let tocContentVisible = false;
 
@@ -723,6 +726,10 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
             updateToc();
     }
 
+    // Set toc title
+    if(tocEnabled)
+        tocTitle.textContent = tocTitleText;
+
     // Set references title
     if(referenceSectionTitle !== "") {
         referencesTitle.textContent = referenceSectionTitle;
@@ -796,6 +803,7 @@ async function initWebsocket()
         if(message.htmlblocks !== undefined) {
             // update page
             tocEnabled = message.toc;
+            tocTitleText = message["toc-title"] ?? tocTitleTextDefault;
             contentBibid = message.bibid;
             suppressBibliography = message["suppress-bibliography"];
             updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);
