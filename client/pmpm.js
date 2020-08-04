@@ -84,7 +84,9 @@ function updateToc()
 
     // Build toc based on headings
     // Use container.parentNode because this also includes references
-    const hs = container.parentNode.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    // Like pandoc's default 'toc-depth: 3'. Not configurable at the moment since
+    // pandoc doesn't parse 'toc-depth' from YAML metadata block
+    const hs = container.parentNode.querySelectorAll('h1, h2, h3');
     const uls = [tocContent];
     tocContent._pmpmLastHlevel = 1;
     let lastLi = undefined;
