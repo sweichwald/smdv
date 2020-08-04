@@ -64,6 +64,7 @@ yet less feature-rich than smdv
 ## Installation
 
 Requires a reasonably recent pandoc, pandoc-citeproc, and browser.
+Use the [pre-compiled pandoc releases](https://github.com/jgm/pandoc/releases) for speed.
 Install pmpm using\
 `pip install git+https://github.com/sweichwald/pmpm.git#egg=pmpm`.\
 If installed within a virtual environment, ensure that pmpm is appropriately linked and available on your path.
@@ -146,7 +147,6 @@ $ echo -n "\0" > $XDG_RUNTIME_DIR/pmpm/pipe
 
 * improve the csl pandoc-citeproc style to link to the article's source url provided in the bibfile
 * ensure unique IDs (currently problematic due to blockwise rendering)
-* kate plugin?
 
 
 
