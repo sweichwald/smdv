@@ -1,6 +1,6 @@
 # pmpm: pandoc markdown preview machine, a simple markdown previewer
 
-
+![pmpm demo](./pmpm-demo.gif)
 
 _Forked from [flaport/smdv][forkedfrom] on 2020-05-01;
 original copyright and license notices are preserved in [LICENSE](LICENSE)
