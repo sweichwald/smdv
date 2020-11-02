@@ -877,7 +877,7 @@ function init(customWrappingTagName, customFpathLoadMessagePrefix)
     initWebsocket();
 
     // Table of content toggle
-    // Is ignored if no <div id="toc"> exists (e.g. revelajs)
+    // Is ignored if no <div id="toc"> exists (e.g. revealjs)
     tocContainer?.getElementsByClassName('toc-toggle')[0]?.addEventListener('click', (ev) => {
         toggleToc();
         ev.preventDefault();
