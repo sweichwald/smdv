@@ -90,6 +90,7 @@ LASTBIB = None
 RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm"
 PIPE_LOST = asyncio.Event()
 
+PANDOC_FEATURES = {}
 
 def read_socket_activation_fds():
     try:
@@ -118,11 +119,25 @@ def read_socket_activation_fds():
 
     return (fd_pipe, fd_websocket)
 
+def check_pandoc_features():
+
+    # Since pandoc 2.11 "--filter pandoc-citeproc" should be replaced by
+    # "--citeproc". Check if we can use --citeproc.
+    proc = subprocess.Popen(
+        ["pandoc", "--citeproc"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL)
+    proc.communicate("")
+    PANDOC_FEATURES["internal_citeproc"] = proc.returncode == 0
 
 def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args(websocket=True)
+
+    # Check which pandoc features are available
+    check_pandoc_features()
 
     if not RUNTIME_DIR.is_dir():
         os.mkdir(RUNTIME_DIR)
@@ -384,8 +399,11 @@ async def citeproc_sub(jsondump, bibid, cwd):
     if jsondump and bibid:
         call = ["pandoc",
                 "--from", "json", "--to", "html5",
-                "--filter", "pandoc-citeproc",
                 "--"+ARGS.math]
+        if PANDOC_FEATURES['internal_citeproc']:
+            call += ["--citeproc"]
+        else:
+            call += ["--filter", "pandoc-citeproc"]
         proc = await asyncio.subprocess.create_subprocess_exec(
             *call,
             cwd=cwd,
