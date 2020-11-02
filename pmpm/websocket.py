@@ -90,7 +90,7 @@ LASTBIB = None
 RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "pmpm"
 PIPE_LOST = asyncio.Event()
 
-PANDOC_FEATURES = {}
+PANDOC_CALLS = {}
 
 def read_socket_activation_fds():
     try:
@@ -119,25 +119,52 @@ def read_socket_activation_fds():
 
     return (fd_pipe, fd_websocket)
 
-def check_pandoc_features():
 
+def init_pandoc_calls():
+
+    # For md2json
+    PANDOC_CALLS["md2json"] = ("pandoc",
+                               "--from", "markdown+emoji",
+                               "--to", "json",
+                               "--"+ARGS.math)
+    # For json2htmlblock
+    PANDOC_CALLS["json2htmlblock"] = ("pandoc",
+                                      "--from", "json",
+                                      "--"+ARGS.math)
+
+    # For json2titleblock
+    PANDOC_CALLS["json2titleblock"] = ("pandoc",
+                                       "--from", "json",
+                                       "--standalone",
+                                       "--"+ARGS.math)
+
+    # For citeproc
     # Since pandoc 2.11 "--filter pandoc-citeproc" should be replaced by
     # "--citeproc". Check if we can use --citeproc.
     proc = subprocess.Popen(
-        ["pandoc", "--citeproc"],
+        ("pandoc", "--citeproc"),
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL)
     proc.communicate("")
-    PANDOC_FEATURES["internal_citeproc"] = proc.returncode == 0
+    has_internal_citeproc = proc.returncode == 0
+
+    PANDOC_CALLS["citeproc"] = ("pandoc",
+                                "--from", "json", "--to", "html5",
+                                "--"+ARGS.math)
+    if has_internal_citeproc:
+        PANDOC_CALLS["citeproc"] += ("--citeproc",)
+    else:
+        PANDOC_CALLS["citeproc"] += ("--filter", "pandoc-citeproc",)
+
 
 def run_websocket_server():
     """ start and run the websocket server """
     global ARGS
     ARGS = parse_args(websocket=True)
 
-    # Check which pandoc features are available
-    check_pandoc_features()
+    # Init pandoc command to be called later
+    init_pandoc_calls()
 
     if not RUNTIME_DIR.is_dir():
         os.mkdir(RUNTIME_DIR)
@@ -397,15 +424,8 @@ async def citeproc():
 @alru_cache(maxsize=LRU_CACHE_SIZE_FULL_FILE)
 async def citeproc_sub(jsondump, bibid, cwd):
     if jsondump and bibid:
-        call = ["pandoc",
-                "--from", "json", "--to", "html5",
-                "--"+ARGS.math]
-        if PANDOC_FEATURES['internal_citeproc']:
-            call += ["--citeproc"]
-        else:
-            call += ["--filter", "pandoc-citeproc"]
         proc = await asyncio.subprocess.create_subprocess_exec(
-            *call,
+            *PANDOC_CALLS['citeproc'],
             cwd=cwd,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
@@ -459,10 +479,7 @@ async def uniqueciteprocdict(jsondict, cwd):
 @alru_cache(maxsize=LRU_CACHE_SIZE_FULL_FILE)
 async def md2json(content, cwd):
     proc = await asyncio.subprocess.create_subprocess_exec(
-        "pandoc",
-        "--from", "markdown+emoji",
-        "--to", "json",
-        "--"+ARGS.math,
+        *PANDOC_CALLS['md2json'],
         cwd=cwd,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
@@ -481,11 +498,8 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 
 def json2htmlblock_sub(jsontxt, cwd, options):
-    call = ("pandoc",
-            "--from", "json",
-            "--"+ARGS.math) + options
     proc = subprocess.Popen(
-        call,
+        PANDOC_CALLS["json2htmlblock"]+options,
         cwd=cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -501,12 +515,9 @@ def json2htmlblock_sub(jsontxt, cwd, options):
 
 @alru_cache(maxsize=LRU_CACHE_SIZE_BLOCK)
 async def json2titleblock(jsontxt, options):
-    call = ("pandoc",
-            "--from", "json",
-            "--standalone",
-            "--"+ARGS.math) + options
     proc = await asyncio.subprocess.create_subprocess_exec(
-        *call,
+        *PANDOC_CALLS["json2titleblock"],
+        *options,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL)
