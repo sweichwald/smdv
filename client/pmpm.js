@@ -398,8 +398,12 @@ function updateRefsFromCiteprocResult()
             const citeprocCitation = citeprocCitations[i-1];
             const textciteCache = _textcitesCache[textcite];
 
+            // For pandoc version < 2.11:
             // Not-found citations are displayed as "???" by default, replace with citekey
             // Must be done before html compare
+            // For pandoc version >= 2.11:
+            // This doesn't work because not-found citations don't have "citeproc-not-found" class.
+            // But: Not-found citations already contain the citekey anyway.
             for(const missing of citeprocCitation.getElementsByClassName('citeproc-not-found'))
                 missing.textContent = missing.getAttribute('data-reference-id');
 

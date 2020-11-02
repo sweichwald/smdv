@@ -452,7 +452,7 @@ div#status {
     transition: background-color .400s linear;
 }
 
-/* Not found citations */
+/* Not found citations, only pandoc version < 2.11 */
 .citeproc-not-found {
     color: #ad0625;
 }
