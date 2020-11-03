@@ -409,7 +409,12 @@ table td {
 @media screen {
   body {
     margin-bottom: 80%;
+    max-width: none;
+  }
+
+  .markdown-body {
     max-width: 44em;
+    margin: 0px auto;
   }
 }
 code, pre, .sourceCode {
@@ -455,4 +460,48 @@ div#status {
 /* Not found citations, only pandoc version < 2.11 */
 .citeproc-not-found {
     color: #ad0625;
+}
+
+/* table of contents */
+#TOC {
+    float: right;
+    margin-left: 1em;
+
+    border: solid 1px black;
+
+    opacity: .5;
+    padding-right: .5em;
+    padding-left: .5em;
+}
+
+#TOC.open {
+    opacity: 1;
+    padding-left: 1.8em;
+    padding-right: 1.8em;
+}
+
+h2#toc-title {
+    margin-top: 0;
+    margin-bottom: 0;
+    font-size: 1em;
+    line-height: inherit;
+    cursor: pointer;
+}
+
+#TOC.open h2#toc-title {
+    font-weight: bold;
+}
+
+#TOC ul {
+    margin: 0;
+    padding: 0;
+    list-style: disc;
+}
+
+#TOC ul ul {
+    margin-left: 1.1em;
+}
+
+.toc-toggle {
+    text-align: center;
 }

@@ -67,6 +67,98 @@ async function getKatex() {
     return _katex;
 }
 
+// Table of contents
+const tocContainer = document.getElementById('TOC');
+const tocContent = document.getElementById('toc-content');
+const tocTitle = document.getElementById('toc-title');
+const tocTitleTextDefault = tocTitle?.textContent;
+let tocEnabled = false;
+let tocTitleText;
+let tocUpdated = false;
+let tocContentVisible = false;
+
+function updateToc()
+{
+    // Remove current content
+    tocContent.textContent = '';
+
+    // Build toc based on headings
+    // Use container.parentNode because this also includes references
+    // Like pandoc's default 'toc-depth: 3'. Not configurable at the moment since
+    // pandoc doesn't parse 'toc-depth' from YAML metadata block
+    const hs = container.parentNode.querySelectorAll('h1, h2, h3');
+    const uls = [tocContent];
+    tocContent._pmpmLastHlevel = 1;
+    let lastLi = undefined;
+    for(const h of hs) {
+
+        const hLevel = parseInt(h.nodeName[1]);
+        if(hLevel == 1) {
+            // Don't show the "Title" in the <header>
+            if(h.classList.contains('title') && h.parentNode.nodeName == 'HEADER')
+                continue;
+            // Don't show the References header if the references are hidden
+            // (either because no references exist or because a custom div is in the text)
+            if(h.id === 'bibliography' && references.style.display === 'none')
+                continue;
+        }
+
+        const lastHLevel = uls[uls.length-1]._pmpmLastHlevel;
+
+        let ul;
+        if(hLevel > lastHLevel && lastLi) {
+            // Jump at most one level up, even if one level was left out
+            // e.g. "# one\n### three"
+            ul = document.createElement('ul');
+            lastLi.appendChild(ul);
+            uls.push(ul);
+        } else if(hLevel < lastHLevel) {
+            // Jump down to the lowest ul with _pmpmLastHlevel >= hLevel
+            ul = uls[uls.length-1];
+            while(uls.length > 1 && uls[uls.length-2]._pmpmLastHlevel >= hLevel) {
+                uls.pop();
+                ul = uls[uls.length-1];
+            }
+        } else {
+            ul = uls[uls.length-1];
+        }
+
+        // Each ul has a "hLevel" which is that from the last added <li>
+        ul._pmpmLastHlevel = hLevel;
+
+        const a = document.createElement('a');
+        // cloneNode so that math works also in toc
+        for(const el of h.childNodes)
+            a.appendChild(el.cloneNode(true));
+        a.href = '#';
+        a._pmpmNodeLink = h;
+        a.onclick = nodeLinkClickEvent;
+
+        const li = document.createElement('li');
+        li.appendChild(a);
+
+        ul.appendChild(li);
+
+        lastLi = li;
+    }
+}
+
+function toggleToc()
+{
+    if(!tocContentVisible) {
+        tocContentVisible = true;
+        if(!tocUpdated) {
+            updateToc();
+            tocUpdated = true;
+        }
+        tocContainer.classList.add('open');
+        tocContent.style.display = 'block';
+    } else {
+        tocContentVisible = false;
+        tocContent.style.display = 'none';
+        tocContainer.classList.remove('open');
+    }
+}
 
 // global variables
 const status = document.getElementById('status');
@@ -233,7 +325,7 @@ function localLinkClickEvent(el)
     return false;
 }
 
-function footnoteClickEvent(event)
+function nodeLinkClickEvent(event)
 {
     let a = event.target;
     while(a && a.tagName != 'A')
@@ -243,7 +335,7 @@ function footnoteClickEvent(event)
 
     // Push state so browser back button jumps to previous position
     history.pushState(history.state, fpath);
-    window.scrollTo({top: a._footnoteHref.getBoundingClientRect().top + window.pageYOffset});
+    window.scrollTo({top: a._pmpmNodeLink.getBoundingClientRect().top + window.pageYOffset});
     return false;
 }
 
@@ -280,12 +372,12 @@ function extractFootnotes(newEl, newFn)
             if(aback.getAttribute('href') == '#fnref'+num) {
                 const aref = document.getElementById('fnref'+num);
                 aref.removeAttribute('id'); // not unique
-                aref._footnoteHref = aback;
-                aref.onclick = footnoteClickEvent;
+                aref._pmpmNodeLink = aback;
+                aref.onclick = nodeLinkClickEvent;
 
                 li._footnoteAref = aref;
-                aback._footnoteHref = aref;
-                aback.onclick = footnoteClickEvent;
+                aback._pmpmNodeLink = aref;
+                aback.onclick = nodeLinkClickEvent;
 
                 break; // Should only be one such link
             }
@@ -586,16 +678,40 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
     // Do outside firstchange !== undefined check, because this can change without htmlblocks changes
     showHideRefList();
 
+    // Show/hide toc container
+    tocContainer?.style.setProperty('display', tocEnabled ? 'block' : 'none');
+
     const blockRenderingPromise = Promise.all(renderPromises);
 
     if(firstChange !== undefined) {
-        // scroll (first changed child of) first changed block into view
-        // But only after rendering is finished. Otherwise the first change detection
-        // may find a still-rendering but unchanged element.
         blockRenderingPromise.finally(() => {
+            // Update table of contents if toc is enabled and currently visible.
+            // Otherwise, mark toc as to-be-updated when it becomes visible next time.
+            // But only after rendering is finished. Otherwise katex in headings may not
+            // be rendered yet and cannot be copied to toc.
+            if(tocEnabled && tocContentVisible)
+                updateToc();
+            else
+                tocUpdated = false;
+
+            // scroll (first changed child of) first changed block into view
+            // But only after rendering is finished. Otherwise the first change detection
+            // may find a still-rendering but unchanged element.
             scrollToFirstChange(firstChange, firstChangeCompare);
         });
+    } else {
+        // Even if no html block is changed, we must update the toc if it
+        // is visible and still has an old version.
+        // Can happen e.g. if we start with toc visible, then get 'toc: false',
+        // then change heading (so that toc is not directly updated),
+        // then again get 'toc: true' (without changing any blocks)
+        if(tocEnabled && tocContentVisible && !tocUpdated)
+            updateToc();
     }
+
+    // Set toc title
+    if(tocEnabled)
+        tocTitle.textContent = tocTitleText;
 
     // Set references title
     if(referenceSectionTitle !== "") {
@@ -669,6 +785,8 @@ async function initWebsocket()
 
         if(message.htmlblocks !== undefined) {
             // update page
+            tocEnabled = message.toc;
+            tocTitleText = message["toc-title"] ?? tocTitleTextDefault;
             contentBibid = message.bibid;
             suppressBibliography = message["suppress-bibliography"];
             updateBodyFromBlocks(message.htmlblocks, message["reference-section-title"]);
@@ -757,6 +875,13 @@ function init(customWrappingTagName, customFpathLoadMessagePrefix)
 
     // Load websocket
     initWebsocket();
+
+    // Table of content toggle
+    // Is ignored if no <div id="toc"> exists (e.g. revealjs)
+    tocContainer?.getElementsByClassName('toc-toggle')[0]?.addEventListener('click', (ev) => {
+        toggleToc();
+        ev.preventDefault();
+    });
 
     // Load initial document if any
     if(fpath && fpath !== 'LIVE') {

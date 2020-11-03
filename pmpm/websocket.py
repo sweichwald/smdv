@@ -314,14 +314,16 @@ async def new_filepath_request(fpath, revealjs):
 
 
 async def process_new_content(fpath, content):
-    htmlblocks, supbib, refsectit, bibid = await md2htmlblocks(content,
-                                                               fpath.parent)
+    htmlblocks, supbib, refsectit, bibid, toc, toctitle = await md2htmlblocks(
+        content, fpath.parent)
     message = {
         "filepath": str(fpath.relative_to(ARGS.home)),
         "htmlblocks": htmlblocks,
         "suppress-bibliography": supbib,
         "reference-section-title": refsectit,
         "bibid": bibid,
+        "toc": toc,
+        "toc-title": toctitle
         }
     EVENT_LOOP.create_task(send_message_to_all_js_clients(message))
 
@@ -623,7 +625,19 @@ async def md2htmlblocks(content, cwd):
     except (IndexError, KeyError):
         refsectit = ''
 
+    try:
+        toc = jsonout['meta']['toc']['c'] is True
+    except KeyError:
+        toc = False
+
+    try:
+        toctitle = jsonout['meta']['toc-title']['c'][0]['c']
+    except (IndexError, KeyError):
+        toctitle = None
+
     return (titleblock + htmlblocks,
             supbib,
             refsectit,
-            bibid)
+            bibid,
+            toc,
+            toctitle)
