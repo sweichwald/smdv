@@ -92,6 +92,7 @@ PIPE_LOST = asyncio.Event()
 
 PANDOC_CALLS = {}
 
+
 def read_socket_activation_fds():
     try:
         import systemd.daemon as sd
@@ -499,7 +500,7 @@ urlRegex = re.compile('(href|src)=[\'"](?!/|https://|http://|#)(.*)[\'"]')
 
 def json2htmlblock_sub(jsontxt, cwd, options):
     proc = subprocess.Popen(
-        PANDOC_CALLS["json2htmlblock"]+options,
+        PANDOC_CALLS["json2htmlblock"] + options,
         cwd=cwd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
