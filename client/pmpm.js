@@ -404,6 +404,10 @@ function updateRefsFromCiteprocResult()
             // For pandoc version >= 2.11:
             // This doesn't work because not-found citations don't have "citeproc-not-found" class.
             // But: Not-found citations already contain the citekey anyway.
+            // Note: For pandoc version >= 2.11 the following for loop is redundant,
+            // yet should have no noticeable effect on performance;
+            // if performance should be a problem in the future: have the server send along
+            // a flag indicating whether the client is required to replace  not-found citation keys
             for(const missing of citeprocCitation.getElementsByClassName('citeproc-not-found'))
                 missing.textContent = missing.getAttribute('data-reference-id');
 
