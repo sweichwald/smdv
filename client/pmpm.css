@@ -505,3 +505,23 @@ h2#toc-title {
 .toc-toggle {
     text-align: center;
 }
+
+/* Footnote numbering in list at the bottom */
+div#footnotes {
+    counter-reset: footnoteFooter;
+}
+div#footnotes li[role="doc-endnote"] {
+    counter-increment: footnoteFooter;
+}
+div#footnotes li[role="doc-endnote"]::marker {
+    content: counter(footnoteFooter) ". ";
+}
+
+/* Footnote numbering inline */
+div#content {
+    counter-reset: footnoteInline;
+}
+div#content a[role="doc-noteref"] sup::before {
+    counter-increment: footnoteInline;
+    content: counter(footnoteInline);
+}

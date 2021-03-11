@@ -346,14 +346,14 @@ function extractFootnotes(newEl, newFn)
     while(fn && !fn.classList.contains('footnotes'))
         fn = fn.nextElementSibling;
     if(!fn)
-        return false;
+        return;
 
     // Check for ol
     let ol = fn.firstElementChild;
     while(ol && ol.tagName != 'OL')
         ol = ol.nextElementSibling;
     if(!ol)
-        return false;
+        return;
 
     // Move each footnote to global footnotes
     let li;
@@ -367,6 +367,10 @@ function extractFootnotes(newEl, newFn)
         // But: attributes like _footenoteHref and _footnoteAref
         // are ignored by isEqualNode(), so we use them and do
         // scrolling in our own onclick event handler.
+        //
+        // Also let CSS counters do the numbering
+        // Then we don't have to manually renumber everything when we
+        // update blocks in a different order than the display order
         li.removeAttribute('id'); // not unique
         for(const aback of li.getElementsByTagName('a')) {
             if(aback.getAttribute('href') == '#fnref'+num) {
@@ -374,6 +378,10 @@ function extractFootnotes(newEl, newFn)
                 aref.removeAttribute('id'); // not unique
                 aref._pmpmNodeLink = aback;
                 aref.onclick = nodeLinkClickEvent;
+
+                // Remove number in the <sup> inside the link
+                // CSS counters should do the numbering
+                aref.firstElementChild.textContent = '';
 
                 li._footnoteAref = aref;
                 aback._pmpmNodeLink = aref;
@@ -390,8 +398,6 @@ function extractFootnotes(newEl, newFn)
 
     // Remove footnotes container
     newEl.removeChild(fn);
-
-    return true;
 }
 
 function extractReferences(newEl)
@@ -553,14 +559,13 @@ const _textcitesCache = {};
 let _refsElement;
 let _citeprocDoneResolve;
 let _citeprocDoneReject;
+let _numberFootnotes = 0;
 function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 {
     // Go through new content blocks. At each step we ensure that <div id="content"> matches the new contents up to block i
     let i;
     let firstChange;
     let firstChangeCompare;
-    let mustRenumber = false;
-    let renumberNum;
     const renderPromises = [];
     for(i = 0; i < contentnew.length; i++) {
 
@@ -580,10 +585,8 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
                 swapElements(container, children[j], children[i]);
 
                 // Swap footnotes blocks i and j if necessary, i.e. if any contains footnotes
-                if(footnotesChildren[j].childElementCount || footnotesChildren[i].childElementCount) {
+                if(footnotesChildren[j].childElementCount || footnotesChildren[i].childElementCount)
                     swapElements(footnotes, footnotesChildren[j], footnotesChildren[i]);
-                    mustRenumber = true;
-                }
 
                 if (firstChange === undefined) {
                     firstChange = children[i];
@@ -602,8 +605,8 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
             footnotes.insertBefore(newFn, footnotesChildren[i]);
 
             // Check footnotes.
-            if(extractFootnotes(newEl, newFn))
-                mustRenumber = true;
+            extractFootnotes(newEl, newFn);
+            _numberFootnotes += newFn.childElementCount;
 
             // Check references
             extractReferences(newEl);
@@ -615,18 +618,6 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
                 firstChange = children[i];
                 firstChangeCompare = children[i+1];
             }
-        }
-
-        // Renumber footnotes if necessary
-        if(mustRenumber) {
-            const fnBlock = footnotesChildren[i];
-            if(renumberNum === undefined) {
-                const tmp = fnBlock.previousElementSibling;
-                renumberNum = tmp ? tmp.start + tmp.childElementCount - 1 : 0;
-            }
-            fnBlock.start = renumberNum+1;
-            for(const li of fnBlock.children)
-                li._footnoteAref.firstElementChild.textContent = ++renumberNum;
         }
     }
 
@@ -653,13 +644,15 @@ function updateBodyFromBlocks(contentnew, referenceSectionTitle)
 
         // Remove block and footnote block
         container.removeChild(block);
-        footnotes.removeChild(footnotes.lastElementChild);
+
+        const fnBlock = footnotes.lastElementChild;
+        _numberFootnotes -= fnBlock.childElementCount;
+        footnotes.removeChild(fnBlock);
     }
 
     if (firstChange !== undefined) {
         // Show/hide footnotes
-        const showFootnotes = footnotes.lastElementChild.start > 1 || footnotes.lastElementChild.childElementCount;
-        footnotes.parentNode.style.display = showFootnotes ? 'block': 'none';
+        footnotes.parentNode.style.display = _numberFootnotes > 0 ? 'block': 'none';
 
         if(_refsElement !== undefined) {
             // Check if
